@@ -1,0 +1,3474 @@
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Archive,
+  BarChart3,
+  Bell,
+  Calendar as CalendarIcon,
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  Edit3,
+  Globe,
+  Layers,
+  LogOut,
+  Menu,
+  MessageCircle,
+  Monitor,
+  Palette,
+  Plus,
+  Receipt,
+  RefreshCw,
+  Search,
+  Settings,
+  Smartphone,
+  Trash2,
+  Users,
+  X,
+  Zap,
+} from 'lucide-react';
+import {
+  AnggotaTimModel,
+  JadwalFotografi,
+  OwnerProfile,
+  PaketLayanan,
+  QuotaStats,
+  RekeningModel,
+  UserRoleType,
+} from './types/kafela';
+import {
+  ProfessionPresetKey,
+  generateDemoWorkspace,
+} from './services/demoDataSeeder';
+import {
+  bangunPesanWA,
+  bersihkanTitik,
+  formatHariTanggalIndo,
+  formatJamWIB,
+  formatNomorWA,
+  formatRibuanInput,
+  formatTanggalIndo,
+  keRupiah,
+} from './utils/formatters';
+import {
+  compressOldSchedulesToFirebase,
+  deleteJadwalFromFirebase,
+  deletePaketFromFirebase,
+  deleteTimFromFirebase,
+  fetchOwnerWorkspaceFromFirebase,
+  listenFirebaseAuthState,
+  logoutFirebaseSession,
+  restoreArsipToFirebase,
+  saveJadwalToFirebase,
+  saveOwnerProfileToFirebase,
+  savePaketToFirebase,
+  saveRekeningToFirebase,
+  saveTimToFirebase,
+  subscribeLiveJadwalUltimate,
+} from './services/firebaseClient';
+import {
+  OfflineIndicator,
+  PWAInstallButton,
+  PWAInstallFloatingBanner,
+} from './hooks/usePWAInstall';
+import { LoginAndSetupScreen } from './components/LoginAndSetupScreen';
+import { StrukModal } from './components/StrukModal';
+import { SignatureAndLogoModal } from './components/SignatureAndLogoModal';
+import { ScheduleAndCashierForm } from './components/ScheduleAndCashierForm';
+import {
+  ArsipPencarianView,
+  KelolaTimView,
+  LaporanKeuanganView,
+  MasterPaketView,
+  PengaturanStudioView,
+  PengaturanSubTab,
+} from './components/ManagementViews';
+
+type ActiveNavTab =
+  | 'KALENDER'
+  | 'LAPORAN'
+  | 'ARSIP'
+  | 'PAKET'
+  | 'TIM'
+  | 'PENGATURAN';
+
+const LOCAL_CACHE_KEY = 'KAFELA_PC_WORKSPACE_CACHE_V4';
+
+const DAFTAR_WARNA_TEMA_APK = [
+  { nama: 'Biru Abu Elegan (Default)', kode: '#34495E' },
+  { nama: 'Biru Gelap Malam', kode: '#1A252C' },
+  { nama: 'Hijau Hutan', kode: '#1E3F20' },
+  { nama: 'Ungu Royal', kode: '#4A235A' },
+  { nama: 'Merah Maroon', kode: '#641E16' },
+  { nama: 'Coklat Kopi', kode: '#4E342E' },
+  { nama: 'Hitam Pekat', kode: '#121212' },
+];
+
+export default function App() {
+  // Mode Sesi: dipulihkan otomatis dari LocalStorage agar saat Reload tidak terlempar ke Login
+  const [sessionMode, setSessionMode] = useState<'DEMO' | 'FIREBASE' | null>(() => {
+    try {
+      const raw = localStorage.getItem(LOCAL_CACHE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed.sessionMode === 'FIREBASE' || parsed.sessionMode === 'DEMO') {
+          return parsed.sessionMode;
+        }
+      }
+    } catch {}
+    return null;
+  });
+  const [isAuthChecking, setIsAuthChecking] = useState<boolean>(true);
+  const [pengaturanSubTab, setPengaturanSubTab] = useState<PengaturanSubTab>(() => {
+    try {
+      const saved = sessionStorage.getItem('KAFELA_SUB_TAB') as PengaturanSubTab | null;
+      if (saved) return saved;
+    } catch {}
+    return 'PROFIL';
+  });
+
+  const [targetOwnerId, setTargetOwnerId] = useState<string>(() => {
+    try {
+      const raw = localStorage.getItem(LOCAL_CACHE_KEY);
+      if (raw) return JSON.parse(raw).targetOwnerId || 'demo-owner-kafela-001';
+    } catch {}
+    return 'demo-owner-kafela-001';
+  });
+  const [userRole, setUserRole] = useState<UserRoleType>(() => {
+    try {
+      const raw = localStorage.getItem(LOCAL_CACHE_KEY);
+      if (raw) return JSON.parse(raw).userRole || 'owner';
+    } catch {}
+    return 'owner';
+  });
+  const [activeUserName, setActiveUserName] = useState<string>(() => {
+    try {
+      const raw = localStorage.getItem(LOCAL_CACHE_KEY);
+      if (raw) {
+        const saved = JSON.parse(raw).activeUserName;
+        if (saved) return saved === 'Owner Studio' ? 'Owner' : saved;
+      }
+    } catch {}
+    return 'Iqbal Saefinnuha';
+  });
+
+  // Data Utama Workspace (Disimpan di RAM + LocalStorage Cache agar 0 Read saat pindah menu)
+  const initialDemo = useMemo(() => generateDemoWorkspace('FOTO'), []);
+  const [owner, setOwner] = useState<OwnerProfile>(() => {
+    try {
+      const raw = localStorage.getItem(LOCAL_CACHE_KEY);
+      if (raw) return JSON.parse(raw).owner || initialDemo.owner;
+    } catch {}
+    return initialDemo.owner;
+  });
+  const [rekening, setRekening] = useState<RekeningModel>(() => {
+    try {
+      const raw = localStorage.getItem(LOCAL_CACHE_KEY);
+      if (raw) return JSON.parse(raw).rekening || initialDemo.rekening;
+    } catch {}
+    return initialDemo.rekening;
+  });
+  const [paketList, setPaketList] = useState<PaketLayanan[]>(() => {
+    try {
+      const raw = localStorage.getItem(LOCAL_CACHE_KEY);
+      if (raw) return JSON.parse(raw).paketList || initialDemo.paketList;
+    } catch {}
+    return initialDemo.paketList;
+  });
+  const [jadwalAktif, setJadwalAktif] = useState<JadwalFotografi[]>(() => {
+    try {
+      const raw = localStorage.getItem(LOCAL_CACHE_KEY);
+      if (raw) return JSON.parse(raw).jadwalAktif || initialDemo.jadwalAktif;
+    } catch {}
+    return initialDemo.jadwalAktif;
+  });
+  const [jadwalArsip, setJadwalArsip] = useState<JadwalFotografi[]>(() => {
+    try {
+      const raw = localStorage.getItem(LOCAL_CACHE_KEY);
+      if (raw) return JSON.parse(raw).jadwalArsip || initialDemo.jadwalArsip;
+    } catch {}
+    return initialDemo.jadwalArsip;
+  });
+  const [timList, setTimList] = useState<AnggotaTimModel[]>(() => {
+    try {
+      const raw = localStorage.getItem(LOCAL_CACHE_KEY);
+      if (raw) return JSON.parse(raw).timList || initialDemo.timList;
+    } catch {}
+    return initialDemo.timList;
+  });
+
+  // Statistik Anti-Boncos
+  const [quotaStats, setQuotaStats] = useState<QuotaStats>({
+    readsSession: 1,
+    writesSession: 0,
+    cacheHitsSession: 8,
+    lastSyncedAt: Date.now(),
+    syncMode: 'CACHE_PRO',
+    isLiveListenerActive: false,
+    isIdlePaused: false,
+  });
+
+  // Navigasi & Drawer APK + Ingat Menu Terakhir saat Reload
+  const [activeTab, setActiveTab] = useState<ActiveNavTab>(() => {
+    try {
+      const saved = sessionStorage.getItem('KAFELA_ACTIVE_TAB') as ActiveNavTab | null;
+      if (saved) return saved;
+    } catch {}
+    return 'KALENDER';
+  });
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem('KAFELA_ACTIVE_TAB', activeTab);
+      sessionStorage.setItem('KAFELA_SUB_TAB', pengaturanSubTab);
+    } catch {}
+  }, [activeTab, pengaturanSubTab]);
+
+  const [isMobileLayout, setIsMobileLayout] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return window.innerWidth < 860;
+  });
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobileLayout(window.innerWidth < 860);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  // State Kalender & Pencarian (Awal pertama buka: tampilkan jadwal di hari ini saja)
+  const getTodayDateKey = () => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(
+      now.getDate()
+    ).padStart(2, '0')}`;
+  };
+
+  const [currentCalendarDate, setCurrentCalendarDate] = useState<Date>(new Date());
+  const [selectedDateStr, setSelectedDateStr] = useState<string | null>(() => getTodayDateKey());
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [statusFilter, setStatusFilter] = useState<
+    | 'TANGGAL_DIPILIH'
+    | 'SEMUA_BULAN'
+    | 'BELUM_LUNAS'
+    | 'SUDAH_DP'
+    | 'BOOKING_BARU'
+    | 'LUNAS'
+    | 'BOOKING_WEB'
+  >('TANGGAL_DIPILIH');
+
+  // Ref & State untuk fitur Geser Kalender (Swipe Jari HP + Drag Mouse PC + Efek Geser Visual)
+  const calendarTouchStartX = useRef<number | null>(null);
+  const calendarTouchStartY = useRef<number | null>(null);
+  const isCalendarDragging = useRef<boolean>(false);
+  const [calendarDragOffset, setCalendarDragOffset] = useState<number>(0);
+  const [showHapusSpamBtn, setShowHapusSpamBtn] = useState<boolean>(false);
+  const [isDownloadingZip, setIsDownloadingZip] = useState<boolean>(false);
+
+  const handleDownloadZipSiapUpload = async () => {
+    if (isDownloadingZip) return;
+    setIsDownloadingZip(true);
+    try {
+      const response = await fetch(`/kflsagnd-kasir-pc.zip?v=${Date.now()}`, {
+        cache: 'no-store',
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      const arrayBuffer = await response.arrayBuffer();
+      const blob = new Blob([arrayBuffer], { type: 'application/zip' });
+      const blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = 'kflsagnd-kasir-pc.zip';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
+    } catch {
+      const fallbackLink = document.createElement('a');
+      fallbackLink.href = `/kflsagnd-kasir-pc.zip?v=${Date.now()}`;
+      fallbackLink.download = 'kflsagnd-kasir-pc.zip';
+      document.body.appendChild(fallbackLink);
+      fallbackLink.click();
+      document.body.removeChild(fallbackLink);
+    } finally {
+      setIsDownloadingZip(false);
+    }
+  };
+
+  const handleCalendarSwipeStart = (clientX: number, clientY: number) => {
+    calendarTouchStartX.current = clientX;
+    calendarTouchStartY.current = clientY;
+    isCalendarDragging.current = true;
+  };
+
+  const handleCalendarSwipeMove = (clientX: number, clientY: number) => {
+    if (
+      !isCalendarDragging.current ||
+      calendarTouchStartX.current === null ||
+      calendarTouchStartY.current === null
+    ) {
+      return;
+    }
+    const deltaX = clientX - calendarTouchStartX.current;
+    const deltaY = clientY - calendarTouchStartY.current;
+    if (Math.abs(deltaX) > Math.abs(deltaY)) {
+      const clamped = Math.max(-75, Math.min(75, deltaX * 0.55));
+      setCalendarDragOffset(clamped);
+    }
+  };
+
+  const handleCalendarSwipeEnd = (clientX: number, clientY: number) => {
+    if (
+      !isCalendarDragging.current ||
+      calendarTouchStartX.current === null ||
+      calendarTouchStartY.current === null
+    ) {
+      setCalendarDragOffset(0);
+      return;
+    }
+    const deltaX = clientX - calendarTouchStartX.current;
+    const deltaY = clientY - calendarTouchStartY.current;
+    calendarTouchStartX.current = null;
+    calendarTouchStartY.current = null;
+    isCalendarDragging.current = false;
+    setCalendarDragOffset(0);
+
+    if (Math.abs(deltaX) > 30 && Math.abs(deltaX) > Math.abs(deltaY)) {
+      if (deltaX < 0) {
+        // Geser ke kiri -> Bulan berikutnya
+        setCurrentCalendarDate(
+          new Date(currentCalendarDate.getFullYear(), currentCalendarDate.getMonth() + 1, 1)
+        );
+      } else {
+        // Geser ke kanan -> Bulan sebelumnya
+        setCurrentCalendarDate(
+          new Date(currentCalendarDate.getFullYear(), currentCalendarDate.getMonth() - 1, 1)
+        );
+      }
+    }
+  };
+
+  const formatJudulTanggalPilihan = (dateStr: string | null) => {
+    if (statusFilter === 'BOOKING_WEB') {
+      return `Booking Web (${listPesananWebMenunggu.length})`;
+    }
+    if (statusFilter === 'TANGGAL_DIPILIH' && dateStr) {
+      const parts = dateStr.split('-');
+      if (parts.length === 3) {
+        const d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+        if (!Number.isNaN(d.getTime())) {
+          return d.toLocaleDateString('id-ID', {
+            day: 'numeric',
+            month: 'long',
+            year: 'numeric',
+          });
+        }
+      }
+      return dateStr;
+    }
+    return currentCalendarDate.toLocaleDateString('id-ID', {
+      month: 'long',
+      year: 'numeric',
+    });
+  };
+
+  // State Modal & Popup persis APK (dialog_aksi_jadwal.xml, dialog_struk.xml, dialog_input_dp.xml, dll)
+  const [aksiJadwalTarget, setAksiJadwalTarget] = useState<JadwalFotografi | null>(null);
+  const [waChoiceTarget, setWaChoiceTarget] = useState<JadwalFotografi | null>(null);
+  const [strukModalJadwal, setStrukModalJadwal] = useState<JadwalFotografi | null>(null);
+  const [dpModalTarget, setDpModalTarget] = useState<JadwalFotografi | null>(null);
+  const [dpModalInputStr, setDpModalInputStr] = useState<string>('');
+  const [fabChoiceOpen, setFabChoiceOpen] = useState(false);
+  const [formModalMode, setFormModalMode] = useState<
+    'KASIR_CEPAT' | 'TAMBAH_AGENDA' | 'EDIT_JADWAL' | null
+  >(null);
+  const [editingJadwal, setEditingJadwal] = useState<JadwalFotografi | null>(null);
+  const [webInboxModalOpen, setWebInboxModalOpen] = useState(false);
+  const [webConfirmTarget, setWebConfirmTarget] = useState<JadwalFotografi | null>(null);
+  const [webConfirmDpStr, setWebConfirmDpStr] = useState<string>('');
+  const [webConfirmExtraName, setWebConfirmExtraName] = useState<string>('');
+  const [webConfirmExtraStr, setWebConfirmExtraStr] = useState<string>('');
+  const [temaModalOpen, setTemaModalOpen] = useState(false);
+  const [signatureModalOpen, setSignatureModalOpen] = useState(false);
+  const [syncingNow, setSyncingNow] = useState(false);
+
+  // Deteksi otomatis sesi login aktif pada Firebase + Splash Screen Penahan Reload
+  useEffect(() => {
+    const splashTimer = setTimeout(() => {
+      setIsAuthChecking(false);
+    }, 550);
+
+    const unsub = listenFirebaseAuthState((fbSession) => {
+      if (fbSession) {
+        handleLoginFirebaseSuccess(fbSession, true);
+      }
+      setIsAuthChecking(false);
+    });
+    return () => {
+      clearTimeout(splashTimer);
+      unsub();
+    };
+  }, []);
+
+  // Simpan otomatis ke LocalStorage Cache PC beserta status sesi agar Reload tidak mental ke Login
+  useEffect(() => {
+    if (!sessionMode) return;
+    try {
+      const existingRaw = localStorage.getItem(LOCAL_CACHE_KEY);
+      const existingCachedAt = existingRaw ? JSON.parse(existingRaw).cachedAt || Date.now() : Date.now();
+      localStorage.setItem(
+        LOCAL_CACHE_KEY,
+        JSON.stringify({
+          sessionMode,
+          targetOwnerId,
+          userRole,
+          activeUserName,
+          cachedAt: existingCachedAt,
+          owner,
+          rekening,
+          paketList,
+          jadwalAktif,
+          jadwalArsip,
+          timList,
+        })
+      );
+    } catch {}
+  }, [sessionMode, targetOwnerId, userRole, activeUserName, owner, rekening, paketList, jadwalAktif, jadwalArsip, timList]);
+
+  // Live Sync Otomatis khusus Paket Ultimate (pada mode Firebase Asli)
+  useEffect(() => {
+    if (
+      sessionMode !== 'FIREBASE' ||
+      owner.paketAktif !== 'Ultimate' ||
+      quotaStats.isIdlePaused
+    ) {
+      return;
+    }
+    const unsub = subscribeLiveJadwalUltimate(targetOwnerId, (liveList, readDelta) => {
+      setJadwalAktif(liveList);
+      setQuotaStats((prev) => ({
+        ...prev,
+        readsSession: prev.readsSession + readDelta,
+        lastSyncedAt: Date.now(),
+      }));
+    });
+    return () => {
+      if (unsub) unsub();
+    };
+  }, [sessionMode, owner.paketAktif, targetOwnerId, quotaStats.isIdlePaused]);
+
+  const bumpCacheHit = () => {
+    setQuotaStats((prev) => ({
+      ...prev,
+      cacheHitsSession: prev.cacheHitsSession + 1,
+    }));
+  };
+
+  // Start Mode Simulasi
+  const handleStartDemo = (preset: ProfessionPresetKey) => {
+    const seeded = generateDemoWorkspace(preset);
+    setOwner(seeded.owner);
+    setRekening(seeded.rekening);
+    setPaketList(seeded.paketList);
+    setJadwalAktif(seeded.jadwalAktif);
+    setJadwalArsip(seeded.jadwalArsip);
+    setTimList(seeded.timList);
+    setTargetOwnerId(seeded.owner.uid);
+    setUserRole('owner');
+    setActiveUserName(seeded.owner.namaOwner);
+    setActiveTab('KALENDER');
+    setSessionMode('DEMO');
+    setQuotaStats({
+      readsSession: 1,
+      writesSession: 0,
+      cacheHitsSession: 5,
+      lastSyncedAt: Date.now(),
+      syncMode: 'CACHE_PRO',
+      isLiveListenerActive: seeded.owner.paketAktif === 'Ultimate',
+      isIdlePaused: false,
+    });
+  };
+
+  // Start Mode Firebase Asli (dengan Smart Cache 0-Read saat Reload)
+  const handleLoginFirebaseSuccess = async (
+    fbSession: {
+      uid: string;
+      targetOwnerId: string;
+      role: UserRoleType;
+      displayName: string;
+    },
+    isAutoReload = false
+  ) => {
+    setTargetOwnerId(fbSession.targetOwnerId);
+    setUserRole(fbSession.role);
+    setActiveUserName(fbSession.displayName);
+    setSessionMode('FIREBASE');
+
+    // Jika ini hanya Reload Halaman (F5) dan Cache lokal untuk Owner ini masih segar (< 5 menit),
+    // gunakan langsung Cache lokal (0 Read ke server!) agar super hemat kuota dan instan!
+    if (isAutoReload) {
+      try {
+        const raw = localStorage.getItem(LOCAL_CACHE_KEY);
+        if (raw) {
+          const cached = JSON.parse(raw);
+          const ageMs = Date.now() - Number(cached.cachedAt || 0);
+          if (
+            cached.targetOwnerId === fbSession.targetOwnerId &&
+            cached.owner &&
+            ageMs >= 0 &&
+            ageMs < 5 * 60 * 1000
+          ) {
+            setQuotaStats((prev) => ({
+              ...prev,
+              readsSession: 0,
+              cacheHitsSession: prev.cacheHitsSession + 1,
+              isLiveListenerActive: cached.owner.paketAktif === 'Ultimate',
+            }));
+            return;
+          }
+        }
+      } catch {}
+    }
+
+    setSyncingNow(true);
+    try {
+      const workspace = await fetchOwnerWorkspaceFromFirebase(fbSession.targetOwnerId);
+      setOwner(workspace.owner);
+      setRekening(workspace.rekening);
+      setPaketList(workspace.paketList);
+      setJadwalAktif(workspace.jadwalAktif);
+      setJadwalArsip(workspace.jadwalArsip);
+      setTimList(workspace.timList);
+      try {
+        localStorage.setItem(
+          LOCAL_CACHE_KEY,
+          JSON.stringify({
+            sessionMode: 'FIREBASE',
+            targetOwnerId: fbSession.targetOwnerId,
+            userRole: fbSession.role,
+            activeUserName: fbSession.displayName,
+            cachedAt: Date.now(),
+            owner: workspace.owner,
+            rekening: workspace.rekening,
+            paketList: workspace.paketList,
+            jadwalAktif: workspace.jadwalAktif,
+            jadwalArsip: workspace.jadwalArsip,
+            timList: workspace.timList,
+          })
+        );
+      } catch {}
+      setQuotaStats({
+        readsSession: workspace.totalReadsUsed,
+        writesSession: 0,
+        cacheHitsSession: 1,
+        lastSyncedAt: Date.now(),
+        syncMode: workspace.owner.paketAktif === 'Ultimate' ? 'LIVE_ULTIMATE' : 'CACHE_PRO',
+        isLiveListenerActive: workspace.owner.paketAktif === 'Ultimate',
+        isIdlePaused: false,
+      });
+
+      // Kompresi Otomatis Jadwal > 60 Hari (2 Bulan) di latar belakang persis bersihkanDanKompresArsipLama() APK
+      if (fbSession.role !== 'anggota' && workspace.jadwalAktif.length > 0) {
+        const batas60HariMs = Date.now() - 60 * 24 * 60 * 60 * 1000;
+        const jadwalKedaluwarsa = workspace.jadwalAktif.filter((j) => {
+          const waktuAcara = j.tanggalSelesaiEvent || j.tanggalMulai || j.waktuMulai || 0;
+          return waktuAcara > 0 && waktuAcara < batas60HariMs;
+        });
+
+        if (jadwalKedaluwarsa.length > 0) {
+          setTimeout(async () => {
+            try {
+              await compressOldSchedulesToFirebase(fbSession.targetOwnerId, jadwalKedaluwarsa);
+              const idsKompres = new Set(jadwalKedaluwarsa.map((x) => x.idJadwal));
+              setJadwalAktif((prev) => prev.filter((x) => !idsKompres.has(x.idJadwal)));
+              setJadwalArsip((prev) => [
+                ...jadwalKedaluwarsa.map((x) => {
+                  const d = new Date(x.tanggalMulai || x.waktuMulai || Date.now());
+                  return {
+                    ...x,
+                    isFromArchive: true,
+                    archiveDocId: `arsip_${d.getFullYear()}_${String(d.getMonth() + 1).padStart(2, '0')}`,
+                  };
+                }),
+                ...prev,
+              ]);
+            } catch (e) {
+              console.warn('Kompresi otomatis 60 hari gagal:', e);
+            }
+          }, 2500);
+        }
+      }
+    } catch (err) {
+      console.error('Gagal mengambil data Firebase:', err);
+    } finally {
+      setSyncingNow(false);
+    }
+  };
+
+  // Tarik Data Manual dari Server (Refresh)
+  const handleManualSync = async () => {
+    setSyncingNow(true);
+    if (sessionMode === 'FIREBASE') {
+      try {
+        const workspace = await fetchOwnerWorkspaceFromFirebase(targetOwnerId);
+        setOwner(workspace.owner);
+        setRekening(workspace.rekening);
+        setPaketList(workspace.paketList);
+        setJadwalAktif(workspace.jadwalAktif);
+        setJadwalArsip(workspace.jadwalArsip);
+        setTimList(workspace.timList);
+        setQuotaStats((prev) => ({
+          ...prev,
+          readsSession: prev.readsSession + workspace.totalReadsUsed,
+          lastSyncedAt: Date.now(),
+        }));
+      } catch (e) {
+        console.error(e);
+      }
+    } else {
+      setQuotaStats((prev) => ({
+        ...prev,
+        readsSession: prev.readsSession + 1,
+        lastSyncedAt: Date.now(),
+      }));
+    }
+    setTimeout(() => setSyncingNow(false), 350);
+  };
+
+  // Simpan / Update Jadwal
+  const handleSaveJadwal = async (jadwalBaru: JadwalFotografi, autoOpenStruk = false) => {
+    setJadwalAktif((prev) => {
+      const exists = prev.some((j) => j.idJadwal === jadwalBaru.idJadwal);
+      if (exists) {
+        return prev.map((j) => (j.idJadwal === jadwalBaru.idJadwal ? jadwalBaru : j));
+      }
+      return [jadwalBaru, ...prev];
+    });
+    setFormModalMode(null);
+    setEditingJadwal(null);
+    setQuotaStats((prev) => ({
+      ...prev,
+      writesSession: prev.writesSession + 1,
+    }));
+
+    if (sessionMode === 'FIREBASE') {
+      await saveJadwalToFirebase(targetOwnerId, jadwalBaru);
+    }
+
+    if (autoOpenStruk) {
+      setStrukModalJadwal(jadwalBaru);
+    }
+  };
+
+  const handleTandaiLunas = async (jadwal: JadwalFotografi) => {
+    const totalBersih = Math.max(0, jadwal.hargaKotor - jadwal.diskon);
+    const updated: JadwalFotografi = {
+      ...jadwal,
+      status: 'Lunas',
+      dpDibayar: totalBersih,
+    };
+    await handleSaveJadwal(updated, false);
+    setAksiJadwalTarget(null);
+  };
+
+  const handleBatalkanJadwal = async (jadwal: JadwalFotografi) => {
+    const updated: JadwalFotografi = {
+      ...jadwal,
+      status: 'Dibatalkan',
+    };
+    await handleSaveJadwal(updated, false);
+    setAksiJadwalTarget(null);
+  };
+
+  const handleDeleteJadwal = async (idJadwal: string) => {
+    setJadwalAktif((prev) => prev.filter((x) => x.idJadwal !== idJadwal));
+    setAksiJadwalTarget(null);
+    setQuotaStats((prev) => ({ ...prev, writesSession: prev.writesSession + 1 }));
+    if (sessionMode === 'FIREBASE') {
+      await deleteJadwalFromFirebase(targetOwnerId, idJadwal);
+    }
+  };
+
+  const handleHapusSemuaSpamWeb = async () => {
+    const idsToDelete = listPesananWebMenunggu.map((j) => j.idJadwal);
+    if (idsToDelete.length === 0) return;
+
+    setJadwalAktif((prev) => prev.filter((j) => !idsToDelete.includes(j.idJadwal)));
+    setQuotaStats((prev) => ({
+      ...prev,
+      writesSession: prev.writesSession + idsToDelete.length,
+    }));
+    if (sessionMode === 'FIREBASE') {
+      for (const id of idsToDelete) {
+        await deleteJadwalFromFirebase(targetOwnerId, id);
+      }
+    }
+  };
+
+  // Konfirmasi Pesanan Web (Persis tanganiAksiWeb di MainActivity.kt)
+  const handleConfirmWebSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!webConfirmTarget) return;
+
+    const hargaDasarAwal =
+      webConfirmTarget.hargaPaketDasar > 0
+        ? webConfirmTarget.hargaPaketDasar
+        : webConfirmTarget.hargaKotor;
+    const tambahanAdmin = bersihkanTitik(webConfirmExtraStr);
+    const totalKotorBaru = hargaDasarAwal + tambahanAdmin;
+    const dpMasuk = bersihkanTitik(webConfirmDpStr);
+
+    const statusBaru =
+      dpMasuk >= totalKotorBaru && totalKotorBaru > 0
+        ? 'Lunas'
+        : dpMasuk > 0
+        ? 'DP'
+        : 'Booking';
+
+    const catatanBersih = (webConfirmTarget.catatan || '')
+      .replace(/VIA WEB/gi, '[Terkonfirmasi Web]')
+      .replace(/\[WEB\]/gi, '[Terkonfirmasi Web]');
+
+    const updated: JadwalFotografi = {
+      ...webConfirmTarget,
+      status: statusBaru,
+      sumber: 'KASIR_POS',
+      catatan: catatanBersih,
+      hargaPaketDasar: hargaDasarAwal,
+      namaTambahan: webConfirmExtraName.trim(),
+      hargaTambahan: tambahanAdmin,
+      hargaKotor: totalKotorBaru,
+      dpDibayar: dpMasuk,
+    };
+
+    await handleSaveJadwal(updated, false);
+    setWebConfirmTarget(null);
+    setToastMessage('✅ Pesanan web berhasil dikonfirmasi dan jadwal dikunci!');
+    setTimeout(() => setToastMessage(null), 3500);
+
+    const pesan = bangunPesanWA(updated, owner, rekening, 'WEB_BOOKING');
+    const noWa = formatNomorWA(updated.waPic);
+    if (noWa) {
+      const link = document.createElement('a');
+      link.href = `https://api.whatsapp.com/send?phone=${noWa}&text=${encodeURIComponent(pesan)}`;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.click();
+    }
+  };
+
+  // Simpan DP Manual (Persis tampilkanDialogInputDP di MainActivity.kt)
+  const handleSaveDpModal = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!dpModalTarget) return;
+    const nominalDp = bersihkanTitik(dpModalInputStr);
+    const totalBersih = Math.max(0, dpModalTarget.hargaKotor - dpModalTarget.diskon);
+    const statusBaru = nominalDp >= totalBersih && totalBersih > 0 ? 'Lunas' : 'Booking';
+
+    const updated: JadwalFotografi = {
+      ...dpModalTarget,
+      dpDibayar: nominalDp,
+      status: statusBaru,
+    };
+    await handleSaveJadwal(updated, false);
+    setDpModalTarget(null);
+  };
+
+  // Kirim Pesan WhatsApp (Tagih Sisa / Konfirmasi Kehadiran)
+  const handleKirimWA = (jadwal: JadwalFotografi, tipe: 'TAGIHAN' | 'KONFIRMASI') => {
+    const pesan = bangunPesanWA(jadwal, owner, rekening, tipe);
+    const noWa = formatNomorWA(jadwal.waPic);
+    if (!noWa) return;
+
+    const link = document.createElement('a');
+    link.href = `https://api.whatsapp.com/send?phone=${noWa}&text=${encodeURIComponent(pesan)}`;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.click();
+  };
+
+  // Helper deteksi apakah jadwal adalah Pesanan Form Web yang BELUM dikonfirmasi Admin
+  const isUnconfirmedWebBooking = (j: JadwalFotografi): boolean => {
+    const st = (j.status || '').trim().toLowerCase();
+    if (st === 'lunas' || st === 'dp' || st === 'sudah dp' || st === 'dibatalkan') {
+      return false;
+    }
+    if (
+      st === 'menunggu konfirmasi' ||
+      st === 'pending' ||
+      st === 'menunggu' ||
+      st === 'booking web' ||
+      st === 'web'
+    ) {
+      return true;
+    }
+    const sumb = (j.sumber || '').trim().toUpperCase();
+    const cat = (j.catatan || '').toUpperCase();
+    const hasWebMarker =
+      sumb === 'WEB' || cat.includes('VIA WEB') || cat.includes('[WEB]');
+    if (hasWebMarker && (j.dpDibayar || 0) <= 0) {
+      return true;
+    }
+    return false;
+  };
+
+  // Daftar Pesanan Web Menunggu Konfirmasi
+  const listPesananWebMenunggu = useMemo(
+    () => jadwalAktif.filter((j) => isUnconfirmedWebBooking(j)),
+    [jadwalAktif]
+  );
+
+  // Jadwal yang sudah resmi tampil di Kalender & Daftar
+  const listJadwalValid = useMemo(
+    () => jadwalAktif.filter((j) => !isUnconfirmedWebBooking(j)),
+    [jadwalAktif]
+  );
+
+  // Data Grid Kalender Bulanan
+  const calendarDays = useMemo(() => {
+    const year = currentCalendarDate.getFullYear();
+    const month = currentCalendarDate.getMonth();
+    const firstDayOfMonth = new Date(year, month, 1).getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+    const cells: {
+      dayNumber: number | null;
+      dateKey: string | null;
+      isToday: boolean;
+      events: JadwalFotografi[];
+    }[] = [];
+
+    for (let i = 0; i < firstDayOfMonth; i++) {
+      cells.push({ dayNumber: null, dateKey: null, isToday: false, events: [] });
+    }
+
+    const now = new Date();
+    const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(
+      now.getDate()
+    ).padStart(2, '0')}`;
+
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dateKey = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      const dayStart = new Date(year, month, d, 0, 0, 0, 0).getTime();
+      const dayEnd = new Date(year, month, d, 23, 59, 59, 999).getTime();
+
+      const matching = jadwalAktif.filter((j) => {
+        if (j.status.toLowerCase() === 'dibatalkan') return false;
+        const start = j.tanggalMulai || j.waktuMulai;
+        const end = j.tanggalSelesaiEvent || start;
+        const sDay = new Date(start);
+        sDay.setHours(0, 0, 0, 0);
+        const eDay = new Date(end);
+        eDay.setHours(23, 59, 59, 999);
+        return dayStart >= sDay.getTime() && dayEnd <= eDay.getTime();
+      });
+
+      cells.push({
+        dayNumber: d,
+        dateKey,
+        isToday: dateKey === todayKey,
+        events: matching,
+      });
+    }
+
+    return cells;
+  }, [currentCalendarDate, jadwalAktif]);
+
+  // Ringkasan Statistik Jadwal Resmi Bulan Ini (Di luar yang masih Menunggu Konfirmasi Web)
+  const ringkasanBulanIni = useMemo(() => {
+    const year = currentCalendarDate.getFullYear();
+    const month = currentCalendarDate.getMonth();
+
+    const eventBulanIni = listJadwalValid.filter((j) => {
+      if (j.status.toLowerCase() === 'dibatalkan') return false;
+      const dObj = new Date(j.tanggalMulai || j.waktuMulai);
+      return dObj.getFullYear() === year && dObj.getMonth() === month;
+    });
+
+    let jmlLunas = 0;
+    let jmlSudahDp = 0;
+    let jmlBookingBaru = 0;
+
+    eventBulanIni.forEach((e) => {
+      const st = e.status.toLowerCase();
+      if (st === 'lunas') {
+        jmlLunas++;
+      } else if (st === 'dp' || st === 'sudah dp' || (e.dpDibayar || 0) > 0) {
+        jmlSudahDp++;
+      } else {
+        jmlBookingBaru++;
+      }
+    });
+
+    return {
+      totalEventBulanIni: eventBulanIni.length,
+      jmlLunas,
+      jmlSudahDp,
+      jmlBookingBaru,
+    };
+  }, [listJadwalValid, currentCalendarDate]);
+
+  // Pesanan Web Menunggu Konfirmasi (Muncul semua saat lonceng diklik, atau sesuai tanggal yang diklik)
+  const pesananWebPadaTanggalDipilih = useMemo(() => {
+    if (statusFilter === 'BOOKING_WEB') {
+      return [...listPesananWebMenunggu].sort((a, b) => a.waktuMulai - b.waktuMulai);
+    }
+    if (!selectedDateStr || statusFilter !== 'TANGGAL_DIPILIH') return [];
+    const [y, m, d] = selectedDateStr.split('-').map(Number);
+    const dayStart = new Date(y, m - 1, d, 0, 0, 0, 0).getTime();
+    const dayEnd = new Date(y, m - 1, d, 23, 59, 59, 999).getTime();
+
+    return listPesananWebMenunggu.filter((j) => {
+      const start = j.tanggalMulai || j.waktuMulai;
+      const end = j.tanggalSelesaiEvent || start;
+      const sDay = new Date(start);
+      sDay.setHours(0, 0, 0, 0);
+      const eDay = new Date(end);
+      eDay.setHours(23, 59, 59, 999);
+      return dayStart >= sDay.getTime() && dayEnd <= eDay.getTime();
+    });
+  }, [listPesananWebMenunggu, selectedDateStr, statusFilter]);
+
+  // Daftar Jadwal Resmi Terfilter di Kolom Kanan (Pesanan Web belum masuk sebelum dikonfirmasi)
+  const filteredScheduleList = useMemo(() => {
+    const year = currentCalendarDate.getFullYear();
+    const month = currentCalendarDate.getMonth();
+
+    return listJadwalValid
+      .filter((j) => {
+        if (searchQuery.trim()) {
+          const q = searchQuery.toLowerCase();
+          return (
+            j.namaKlien.toLowerCase().includes(q) ||
+            j.namaAcara.toLowerCase().includes(q) ||
+            j.lokasi.toLowerCase().includes(q) ||
+            j.paket.toLowerCase().includes(q)
+          );
+        }
+
+        if (selectedDateStr && statusFilter === 'TANGGAL_DIPILIH') {
+          const [y, m, d] = selectedDateStr.split('-').map(Number);
+          const dayStart = new Date(y, m - 1, d, 0, 0, 0, 0).getTime();
+          const dayEnd = new Date(y, m - 1, d, 23, 59, 59, 999).getTime();
+          const start = j.tanggalMulai || j.waktuMulai;
+          const end = j.tanggalSelesaiEvent || start;
+          const sDay = new Date(start);
+          sDay.setHours(0, 0, 0, 0);
+          const eDay = new Date(end);
+          eDay.setHours(23, 59, 59, 999);
+          return dayStart >= sDay.getTime() && dayEnd <= eDay.getTime();
+        }
+
+        const dObj = new Date(j.tanggalMulai || j.waktuMulai);
+        const inMonth = dObj.getFullYear() === year && dObj.getMonth() === month;
+        if (!inMonth) return false;
+
+        if (statusFilter === 'BELUM_LUNAS') {
+          const st = j.status.toLowerCase();
+          if (st === 'lunas' || st === 'dibatalkan') return false;
+          const sisa = Math.max(0, j.hargaKotor - j.diskon - j.dpDibayar);
+          return sisa > 0 || st === 'booking' || st === 'dp' || st === 'sudah dp';
+        }
+        if (statusFilter === 'SUDAH_DP') {
+          const st = j.status.toLowerCase();
+          if (st === 'lunas' || st === 'dibatalkan') return false;
+          return st === 'dp' || st === 'sudah dp' || (j.dpDibayar || 0) > 0;
+        }
+        if (statusFilter === 'BOOKING_BARU') {
+          const st = j.status.toLowerCase();
+          if (st === 'lunas' || st === 'dibatalkan') return false;
+          return st !== 'dp' && st !== 'sudah dp' && (j.dpDibayar || 0) <= 0;
+        }
+        if (statusFilter === 'LUNAS') {
+          return j.status.toLowerCase() === 'lunas';
+        }
+        return true;
+      })
+      .sort((a, b) => a.waktuMulai - b.waktuMulai);
+  }, [listJadwalValid, currentCalendarDate, searchQuery, selectedDateStr, statusFilter]);
+
+  const bgWallpaperColor = owner.warnaTema || '#34495E';
+
+  useEffect(() => {
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', bgWallpaperColor);
+    document.body.style.backgroundColor = bgWallpaperColor;
+  }, [bgWallpaperColor]);
+
+  // SPLASH SCREEN ("FLASH") SAAT RELOAD AGAR TIDAK TERLEMPAR KE HALAMAN LOGIN
+  if (isAuthChecking && !sessionMode) {
+    return (
+      <div
+        className="min-h-screen w-full flex flex-col items-center justify-center p-6 select-none"
+        style={{ backgroundColor: '#12161F', color: '#FFFFFF' }}
+      >
+        <div className="relative flex flex-col items-center">
+          <div className="w-28 h-28 rounded-full p-1 bg-gradient-to-tr from-amber-600/60 via-amber-200/40 to-amber-500/60 shadow-2xl animate-pulse">
+            <img
+              src="/logo-kafela.png"
+              alt="kafela's Agenda"
+              className="w-full h-full rounded-full object-contain object-center bg-[#FAF9F6]"
+            />
+          </div>
+          <h1 className="mt-4 text-xl font-extrabold tracking-tight text-white">
+            Kafela&apos;s Agenda
+          </h1>
+          <p className="mt-1 text-xs text-slate-400">Memulihkan sesi akun Anda...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Jika belum login setelah pengecekan selesai, tampilkan Halaman Login
+  if (!sessionMode) {
+    return (
+      <LoginAndSetupScreen
+        onStartDemo={handleStartDemo}
+        onLoginFirebaseSuccess={(s) => handleLoginFirebaseSuccess(s, false)}
+      />
+    );
+  }
+
+  const isKruAnggota = userRole === 'anggota';
+  const sisaHariLangganan = Math.max(
+    0,
+    Math.ceil((owner.tanggalLangganan - Date.now()) / (1000 * 60 * 60 * 24))
+  );
+
+  // Update header color based on theme
+  const headerBgColor = bgWallpaperColor;
+
+  const isKacaGelap = owner.isKacaGelap !== false;
+  const cardBgStyle = isKacaGelap
+    ? { backgroundColor: 'rgba(30, 30, 30, 0.88)', borderColor: 'rgba(255, 255, 255, 0.1)' }
+    : { backgroundColor: 'rgba(255, 255, 255, 0.92)', borderColor: 'rgba(0, 0, 0, 0.1)' };
+  const textPrimaryColor = isKacaGelap ? '#FFFFFF' : '#2C3E50';
+  const textSecondaryColor = isKacaGelap ? '#BBBBBB' : '#555555';
+
+
+  return (
+    <div
+      className="min-h-screen w-full select-none transition-colors duration-300"
+      style={{
+        backgroundColor: bgWallpaperColor,
+        color: '#FFFFFF',
+      }}
+    >
+      <div
+        className="min-h-screen w-full flex flex-col relative transition-all duration-300"
+        style={{ backgroundColor: bgWallpaperColor, color: '#FFFFFF' }}
+      >
+        <OfflineIndicator />
+        <PWAInstallFloatingBanner />
+
+        {/* ===================================================================== */}
+        {/* HEADER ATAS:                                                          */}
+        {/* - DI HP: Ringkas persis layoutHeaderAtas di activity_main.xml         */}
+        {/* - DI PC: Header Desktop Profesional dengan Search & Tombol Cepat      */}
+        {/* ===================================================================== */}
+        <header
+          className={
+            isMobileLayout
+              ? 'px-3.5 py-2 flex items-center justify-between gap-2 border-b border-white/10 sticky top-0 z-30'
+              : 'px-6 py-3 flex items-center justify-between gap-4 border-b border-white/10 sticky top-0 z-30 shadow-md'
+          }
+          style={{ backgroundColor: headerBgColor }}
+        >
+          {/* Kiri: Tombol Drawer (Khusus HP) + Judul Kafela's Agenda */}
+          <div className="flex items-center gap-3">
+            {isMobileLayout && (
+              <button
+                type="button"
+                onClick={() => setDrawerOpen(true)}
+                className="p-1.5 rounded-lg hover:bg-white/10 transition-colors cursor-pointer"
+                title="Buka Menu Navigasi"
+              >
+                <Menu className="w-6 h-6 text-white" />
+              </button>
+            )}
+            <div
+              className="flex items-center gap-3 cursor-pointer"
+              onClick={() => setActiveTab('KALENDER')}
+            >
+              <img
+                src={owner.logoBrandUrl || '/logo-kafela.png'}
+                alt="kafela's Agenda"
+                className="w-10 h-10 rounded-full object-contain object-center p-0.5 bg-[#FAF9F6] shadow-md border border-white/25 shrink-0"
+              />
+              <div>
+                <h1
+                  className="font-extrabold tracking-tight text-white leading-tight"
+                  style={{
+                    fontSize: isMobileLayout ? '17px' : '19px',
+                    textShadow: '1px 1px 3px rgba(0,0,0,0.8)',
+                  }}
+                >
+                  Kafela&apos;s Agenda
+                </h1>
+                <p className="text-[11px] text-white/85 leading-tight flex items-center gap-1.5 flex-wrap">
+                  <span className="font-bold text-amber-300">
+                    👤 {activeUserName === 'Owner Studio' ? 'Owner' : activeUserName}
+                  </span>
+                  <span className="text-white/40">•</span>
+                  <span className="px-1.5 py-0.5 rounded text-[10px] font-extrabold uppercase bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                    {userRole === 'owner' ? 'Owner' : userRole === 'admin' ? 'Admin' : 'Anggota Tim'}
+                  </span>
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Tengah (Khusus Layar PC): Pencarian Cepat Desktop */}
+          {!isMobileLayout && (
+            <div
+              className="flex-1 max-w-lg mx-4 flex items-center rounded-xl px-4 py-2 border shadow-inner"
+              style={{
+                backgroundColor: isKacaGelap
+                  ? 'rgba(255, 255, 255, 0.07)'
+                  : 'rgba(255, 255, 255, 0.92)',
+                borderColor: 'rgba(255,255,255,0.15)',
+              }}
+            >
+              <Search
+                className="w-4 h-4 mr-2.5 shrink-0"
+                style={{ color: isKacaGelap ? '#AAAAAA' : '#666666' }}
+              />
+              <input
+                type="text"
+                placeholder="Cari nama klien, acara, paket, lokasi, atau nomor WA..."
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  if (activeTab !== 'KALENDER') setActiveTab('KALENDER');
+                  bumpCacheHit();
+                }}
+                className="w-full bg-transparent text-xs sm:text-sm focus:outline-none"
+                style={{ color: textPrimaryColor }}
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="ml-1 text-xs opacity-70 hover:opacity-100 cursor-pointer"
+                  style={{ color: textPrimaryColor }}
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Kanan: Tombol Cepat PC + "X Event" + Lonceng Notifikasi Web */}
+          <div className="flex items-center gap-2">
+            {!isMobileLayout && !isKruAnggota && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingJadwal(null);
+                    setFormModalMode('KASIR_CEPAT');
+                  }}
+                  className="px-3 py-1.5 rounded-lg text-xs font-extrabold text-white flex items-center gap-1.5 shadow-sm hover:opacity-95 transition-opacity cursor-pointer"
+                  style={{ backgroundColor: '#27AE60' }}
+                >
+                  <Zap className="w-3.5 h-3.5" />
+                  <span>Kasir Cepat</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingJadwal(null);
+                    setFormModalMode('TAMBAH_AGENDA');
+                  }}
+                  className="px-3 py-1.5 rounded-lg text-xs font-extrabold text-white flex items-center gap-1.5 shadow-sm hover:opacity-95 transition-opacity cursor-pointer"
+                  style={{ backgroundColor: '#2980B9' }}
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Tambah Jadwal</span>
+                </button>
+              </>
+            )}
+
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab('KALENDER');
+                setSelectedDateStr(null);
+                setStatusFilter('SEMUA_BULAN');
+                bumpCacheHit();
+              }}
+              className="px-3 py-1.5 rounded-lg text-xs font-extrabold transition-transform hover:scale-105 cursor-pointer shadow-xs"
+              style={{
+                backgroundColor:
+                  statusFilter === 'SEMUA_BULAN' ? '#2980B9' : 'rgba(255, 255, 255, 0.14)',
+                color: '#FFFFFF',
+                border:
+                  statusFilter === 'SEMUA_BULAN'
+                    ? '1px solid rgba(255, 255, 255, 0.45)'
+                    : '1px solid rgba(255, 255, 255, 0.15)',
+              }}
+              title="Klik untuk memunculkan semua jadwal di bulan ini beserta tanggalnya"
+            >
+              {ringkasanBulanIni.totalEventBulanIni} Event
+            </button>
+
+            {!isKruAnggota && (
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab('KALENDER');
+                  setSelectedDateStr(null);
+                  setStatusFilter('BOOKING_WEB');
+                  setShowHapusSpamBtn(true);
+                  bumpCacheHit();
+                }}
+                className={`relative p-2 rounded-lg transition-colors cursor-pointer ${
+                  statusFilter === 'BOOKING_WEB' ? 'bg-white/20' : 'hover:bg-white/10'
+                }`}
+                title="Klik untuk menampilkan daftar pesanan dari Website Klien"
+              >
+                <Bell className="w-5 h-5 text-white" />
+                {listPesananWebMenunggu.length > 0 && (
+                  <span
+                    className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center text-[10px] font-bold text-white shadow"
+                    style={{ backgroundColor: '#E74C3C' }}
+                  >
+                    {listPesananWebMenunggu.length}
+                  </span>
+                )}
+              </button>
+            )}
+          </div>
+        </header>
+
+      {/* ===================================================================== */}
+      {/* NAVIGATION DRAWER PERSIS nav_header.xml APK ANDROID                   */}
+      {/* ===================================================================== */}
+      {drawerOpen && (
+        <div className="fixed inset-0 z-50 flex">
+          <div
+            className="fixed inset-0 bg-black/60 backdrop-blur-xs"
+            onClick={() => setDrawerOpen(false)}
+          />
+          <aside
+            className="relative w-[300px] max-w-[85vw] h-full flex flex-col shadow-2xl z-10 overflow-y-auto"
+            style={{ backgroundColor: '#121212', color: '#FFFFFF' }} // Could be derived from theme
+          >
+            {/* Header Drawer Mengikuti Warna Tema Studio */}
+            <div className="p-5" style={{ backgroundColor: headerBgColor }}>
+              <div className="flex items-start justify-between">
+                <div>
+                  <h2 className="font-bold text-white" style={{ fontSize: '20px' }}>
+                    Kafela&apos;s Agenda
+                  </h2>
+                  <p className="mt-0.5" style={{ fontSize: '13px', color: '#BDC3C7' }}>
+                    Manajemen Jadwal &amp; Kasir
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setDrawerOpen(false)}
+                  className="p-1 rounded-lg text-white/70 hover:text-white cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="mt-2.5 space-y-1 bg-black/20 p-2.5 rounded-xl border border-white/10">
+                <p className="text-[11px] text-slate-300">Masuk sebagai:</p>
+                <div className="flex items-center justify-between">
+                  <span className="font-extrabold text-sm text-white flex items-center gap-1.5">
+                    👤 {activeUserName}
+                  </span>
+                  <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                    {userRole === 'owner' ? 'Owner' : userRole === 'admin' ? 'Admin' : 'Kru'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Card Status Paket (Disembunyikan untuk Anggota / Kru) */}
+              {!isKruAnggota && (
+                <div
+                  className="mt-3.5 rounded-[10px] p-3 border border-white/10"
+                  style={{ backgroundColor: 'rgba(0, 0, 0, 0.28)' }}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold" style={{ fontSize: '12px', color: '#2ECC71' }}>
+                      PAKET AKTIF: {owner.paketAktif.toUpperCase()}
+                    </span>
+                    <span
+                      className="font-bold px-2 py-0.5 rounded text-white"
+                      style={{ fontSize: '10px', backgroundColor: '#F39C12' }}
+                    >
+                      AKTIF
+                    </span>
+                  </div>
+                  <p className="mt-1" style={{ fontSize: '11px', color: '#ECF0F1' }}>
+                    Masa aktif: Sisa {sisaHariLangganan} Hari
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Daftar Menu Drawer APK */}
+            <div className="flex-1 p-3 space-y-1 text-sm">
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab('KALENDER');
+                  setDrawerOpen(false);
+                }}
+                className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-xl font-bold transition-colors cursor-pointer ${
+                  activeTab === 'KALENDER'
+                    ? 'bg-[#2980B9] text-white'
+                    : 'text-[#DDDDDD] hover:bg-white/5'
+                }`}
+              >
+                <CalendarIcon className="w-4 h-4" />
+                <span>Kalender &amp; Daftar Jadwal</span>
+              </button>
+
+              {!isKruAnggota && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDrawerOpen(false);
+                      setEditingJadwal(null);
+                      setFormModalMode('KASIR_CEPAT');
+                    }}
+                    className="w-full flex items-center gap-3 px-3.5 py-3 rounded-xl font-bold text-[#2ECC71] hover:bg-white/5 transition-colors cursor-pointer"
+                  >
+                    <Zap className="w-4 h-4" />
+                    <span>Kasir Cepat</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDrawerOpen(false);
+                      setEditingJadwal(null);
+                      setFormModalMode('TAMBAH_AGENDA');
+                    }}
+                    className="w-full flex items-center gap-3 px-3.5 py-3 rounded-xl font-bold text-[#64B5F6] hover:bg-white/5 transition-colors cursor-pointer"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Tambah Jadwal Booking</span>
+                  </button>
+
+                  <div className="my-2 border-t border-white/10" />
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveTab('PAKET');
+                      setDrawerOpen(false);
+                    }}
+                    className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-xl font-bold transition-colors cursor-pointer ${
+                      activeTab === 'PAKET'
+                        ? 'bg-[#2980B9] text-white'
+                        : 'text-[#DDDDDD] hover:bg-white/5'
+                    }`}
+                  >
+                    <Layers className="w-4 h-4" />
+                    <span>Master Paket Layanan</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveTab('LAPORAN');
+                      setDrawerOpen(false);
+                    }}
+                    className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-xl font-bold transition-colors cursor-pointer ${
+                      activeTab === 'LAPORAN'
+                        ? 'bg-[#2980B9] text-white'
+                        : 'text-[#DDDDDD] hover:bg-white/5'
+                    }`}
+                  >
+                    <BarChart3 className="w-4 h-4" />
+                    <span>Laporan Keuangan &amp; Piutang</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveTab('ARSIP');
+                      setDrawerOpen(false);
+                    }}
+                    className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-xl font-bold transition-colors cursor-pointer ${
+                      activeTab === 'ARSIP'
+                        ? 'bg-[#2980B9] text-white'
+                        : 'text-[#DDDDDD] hover:bg-white/5'
+                    }`}
+                  >
+                    <Archive className="w-4 h-4" />
+                    <span>Gudang Arsip &amp; Pencarian</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveTab('TIM');
+                      setDrawerOpen(false);
+                    }}
+                    className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-xl font-bold transition-colors cursor-pointer ${
+                      activeTab === 'TIM'
+                        ? 'bg-[#2980B9] text-white'
+                        : 'text-[#DDDDDD] hover:bg-white/5'
+                    }`}
+                  >
+                    <Users className="w-4 h-4" />
+                    <span>Kelola Tim &amp; Kru</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDrawerOpen(false);
+                      setTemaModalOpen(true);
+                    }}
+                    className="w-full flex items-center gap-3 px-3.5 py-3 rounded-xl font-bold text-[#DDDDDD] hover:bg-white/5 transition-colors cursor-pointer"
+                  >
+                    <Palette className="w-4 h-4 text-[#F39C12]" />
+                    <span>Ganti Tema &amp; Wallpaper</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPengaturanSubTab('WEB');
+                      setActiveTab('PENGATURAN');
+                      setDrawerOpen(false);
+                    }}
+                    className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-xl font-bold transition-colors cursor-pointer ${
+                      activeTab === 'PENGATURAN' && pengaturanSubTab === 'WEB'
+                        ? 'bg-[#2980B9] text-white'
+                        : 'text-[#DDDDDD] hover:bg-white/5'
+                    }`}
+                  >
+                    <Globe className="w-4 h-4 text-purple-400" />
+                    <span>Atur Website &amp; Link Booking</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPengaturanSubTab('PROFIL');
+                      setActiveTab('PENGATURAN');
+                      setDrawerOpen(false);
+                    }}
+                    className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-xl font-bold transition-colors cursor-pointer ${
+                      activeTab === 'PENGATURAN' && pengaturanSubTab !== 'WEB'
+                        ? 'bg-[#2980B9] text-white'
+                        : 'text-[#DDDDDD] hover:bg-white/5'
+                    }`}
+                  >
+                    <Settings className="w-4 h-4" />
+                    <span>Pengaturan &amp; Rekening</span>
+                  </button>
+                </>
+              )}
+
+              <div className="my-2 border-t border-white/10" />
+
+              <div className="px-2 py-1 space-y-2">
+                <PWAInstallButton />
+                {typeof window !== 'undefined' &&
+                  !window.location.hostname.includes('kflsagnd') &&
+                  !window.location.hostname.includes('kafilasuci3') && (
+                    <button
+                      type="button"
+                      onClick={handleDownloadZipSiapUpload}
+                      disabled={isDownloadingZip}
+                      className="flex items-center justify-center gap-1.5 w-full px-3 py-2.5 rounded-xl bg-[#F39C12] hover:opacity-95 disabled:opacity-60 text-slate-950 text-xs font-extrabold shadow-sm transition-opacity cursor-pointer"
+                    >
+                      <Download className="w-4 h-4 shrink-0" />
+                      <span>
+                        {isDownloadingZip
+                          ? 'Mengunduh ZIP Lengkap...'
+                          : 'Download ZIP Lengkap (Dist + Source)'}
+                      </span>
+                    </button>
+                  )}
+              </div>
+            </div>
+
+            {/* Footer Logout */}
+            <div className="p-3 border-t border-white/10">
+              <button
+                type="button"
+                onClick={async () => {
+                  setDrawerOpen(false);
+                  if (sessionMode === 'FIREBASE') {
+                    await logoutFirebaseSession();
+                  }
+                  localStorage.removeItem(LOCAL_CACHE_KEY);
+                  setSessionMode(null);
+                }}
+                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-bold text-white cursor-pointer"
+                style={{ backgroundColor: '#C0392B' }}
+              >
+                <LogOut className="w-4 h-4" />
+                <span>Keluar Akun</span>
+              </button>
+            </div>
+          </aside>
+        </div>
+      )}
+
+      {/* ===================================================================== */}
+      {/* KONTEN UTAMA:                                                         */}
+      {/* - DI HP: 1 Kolom Penuh (Kalender di Atas, Jadwal di Bawah)            */}
+      {/* - DI WEB PC: Menu Samping (Sidebar Kiri) Muncul Langsung + Konten     */}
+      {/* ===================================================================== */}
+      <div className="flex-1 flex w-full">
+        {/* MENU SAMPING PERMANEN KHUSUS TAMPILAN WEB PC */}
+        {!isMobileLayout && (
+          <aside
+            className="w-[260px] shrink-0 flex flex-col border-r border-white/10 shadow-xl sticky top-[53px] h-[calc(100vh-53px)] overflow-y-auto"
+            style={{ backgroundColor: 'rgba(24, 28, 34, 0.94)', color: '#FFFFFF' }}
+          >
+            {/* Ringkasan Paket Aktif di Menu Samping PC (Disembunyikan untuk Anggota / Kru) */}
+            {!isKruAnggota && (
+              <div
+                className="p-3.5 border-b border-white/10"
+                style={{ backgroundColor: headerBgColor }}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-[11px] text-[#2ECC71]">
+                    PAKET: {owner.paketAktif.toUpperCase()}
+                  </span>
+                  <span
+                    className="font-bold px-2 py-0.5 rounded text-white text-[10px]"
+                    style={{ backgroundColor: '#F39C12' }}
+                  >
+                    Sisa {sisaHariLangganan} Hari
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* Daftar Menu Samping PC */}
+            <div className="flex-1 p-2.5 space-y-1 text-xs">
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab('KALENDER');
+                  bumpCacheHit();
+                }}
+                className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl font-bold transition-colors cursor-pointer ${
+                  activeTab === 'KALENDER'
+                    ? 'bg-[#2980B9] text-white shadow'
+                    : 'text-[#DDDDDD] hover:bg-white/5'
+                }`}
+              >
+                <CalendarIcon className="w-4 h-4 shrink-0" />
+                <span>Kalender &amp; Jadwal</span>
+              </button>
+
+              {!isKruAnggota && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingJadwal(null);
+                      setFormModalMode('KASIR_CEPAT');
+                    }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl font-bold text-[#2ECC71] hover:bg-white/5 transition-colors cursor-pointer"
+                  >
+                    <Zap className="w-4 h-4 shrink-0" />
+                    <span>Kasir Cepat</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingJadwal(null);
+                      setFormModalMode('TAMBAH_AGENDA');
+                    }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl font-bold text-[#64B5F6] hover:bg-white/5 transition-colors cursor-pointer"
+                  >
+                    <Plus className="w-4 h-4 shrink-0" />
+                    <span>Tambah Jadwal Booking</span>
+                  </button>
+
+                  <div className="my-1.5 border-t border-white/10" />
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveTab('PAKET');
+                      bumpCacheHit();
+                    }}
+                    className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl font-bold transition-colors cursor-pointer ${
+                      activeTab === 'PAKET'
+                        ? 'bg-[#2980B9] text-white shadow'
+                        : 'text-[#DDDDDD] hover:bg-white/5'
+                    }`}
+                  >
+                    <Layers className="w-4 h-4 shrink-0" />
+                    <span>Master Paket Layanan</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveTab('LAPORAN');
+                      bumpCacheHit();
+                    }}
+                    className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl font-bold transition-colors cursor-pointer ${
+                      activeTab === 'LAPORAN'
+                        ? 'bg-[#2980B9] text-white shadow'
+                        : 'text-[#DDDDDD] hover:bg-white/5'
+                    }`}
+                  >
+                    <BarChart3 className="w-4 h-4 shrink-0" />
+                    <span>Laporan Keuangan &amp; Piutang</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveTab('ARSIP');
+                      bumpCacheHit();
+                    }}
+                    className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl font-bold transition-colors cursor-pointer ${
+                      activeTab === 'ARSIP'
+                        ? 'bg-[#2980B9] text-white shadow'
+                        : 'text-[#DDDDDD] hover:bg-white/5'
+                    }`}
+                  >
+                    <Archive className="w-4 h-4 shrink-0" />
+                    <span>Gudang Arsip &amp; Pencarian</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveTab('TIM');
+                      bumpCacheHit();
+                    }}
+                    className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl font-bold transition-colors cursor-pointer ${
+                      activeTab === 'TIM'
+                        ? 'bg-[#2980B9] text-white shadow'
+                        : 'text-[#DDDDDD] hover:bg-white/5'
+                    }`}
+                  >
+                    <Users className="w-4 h-4 shrink-0" />
+                    <span>Kelola Tim &amp; Kru</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setTemaModalOpen(true)}
+                    className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl font-bold text-[#DDDDDD] hover:bg-white/5 transition-colors cursor-pointer"
+                  >
+                    <Palette className="w-4 h-4 text-[#F39C12] shrink-0" />
+                    <span>Ganti Tema &amp; Wallpaper</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPengaturanSubTab('WEB');
+                      setActiveTab('PENGATURAN');
+                      bumpCacheHit();
+                    }}
+                    className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl font-bold transition-colors cursor-pointer ${
+                      activeTab === 'PENGATURAN' && pengaturanSubTab === 'WEB'
+                        ? 'bg-[#2980B9] text-white shadow'
+                        : 'text-[#DDDDDD] hover:bg-white/5'
+                    }`}
+                  >
+                    <Globe className="w-4 h-4 text-purple-400 shrink-0" />
+                    <span>Atur Website &amp; Link Booking</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPengaturanSubTab('PROFIL');
+                      setActiveTab('PENGATURAN');
+                      bumpCacheHit();
+                    }}
+                    className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl font-bold transition-colors cursor-pointer ${
+                      activeTab === 'PENGATURAN' && pengaturanSubTab !== 'WEB'
+                        ? 'bg-[#2980B9] text-white shadow'
+                        : 'text-[#DDDDDD] hover:bg-white/5'
+                    }`}
+                  >
+                    <Settings className="w-4 h-4 shrink-0" />
+                    <span>Pengaturan &amp; Rekening</span>
+                  </button>
+                </>
+              )}
+
+              <div className="my-1.5 border-t border-white/10" />
+
+              <div className="px-1 py-1 space-y-2">
+                <PWAInstallButton />
+                {typeof window !== 'undefined' &&
+                  !window.location.hostname.includes('kflsagnd') &&
+                  !window.location.hostname.includes('kafilasuci3') && (
+                    <button
+                      type="button"
+                      onClick={handleDownloadZipSiapUpload}
+                      disabled={isDownloadingZip}
+                      className="flex items-center justify-center gap-1.5 w-full px-3 py-2 rounded-lg bg-[#F39C12] hover:opacity-95 disabled:opacity-60 text-slate-950 text-[11px] font-extrabold shadow-sm transition-opacity cursor-pointer"
+                    >
+                      <Download className="w-3.5 h-3.5 shrink-0" />
+                      <span>
+                        {isDownloadingZip
+                          ? 'Mengunduh ZIP Lengkap...'
+                          : 'Download ZIP Lengkap (Dist + Source)'}
+                      </span>
+                    </button>
+                  )}
+              </div>
+            </div>
+
+            {/* Footer Logout Menu Samping PC */}
+            <div className="p-2.5 border-t border-white/10">
+              <button
+                type="button"
+                onClick={async () => {
+                  if (sessionMode === 'FIREBASE') {
+                    await logoutFirebaseSession();
+                  }
+                  localStorage.removeItem(LOCAL_CACHE_KEY);
+                  setSessionMode(null);
+                }}
+                className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs font-bold text-white cursor-pointer"
+                style={{ backgroundColor: '#C0392B' }}
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                <span>Keluar Akun</span>
+              </button>
+            </div>
+          </aside>
+        )}
+
+      <main
+        className={`flex-1 w-full mx-auto ${
+          isMobileLayout ? 'py-2.5 px-2.5 pb-24' : 'max-w-[1440px] py-6 px-6'
+        }`}
+      >
+        {/* Tombol Kembali ke Kalender saat membuka menu lain di HP */}
+        {isMobileLayout && activeTab !== 'KALENDER' && (
+          <div className="mb-2.5 flex items-center justify-between">
+            <button
+              type="button"
+              onClick={() => setActiveTab('KALENDER')}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-white bg-black/35 hover:bg-black/50 border border-white/15 cursor-pointer"
+            >
+              <ChevronLeft className="w-4 h-4" />
+              <span>Kembali ke Kalender Utama</span>
+            </button>
+          </div>
+        )}
+
+        {activeTab === 'KALENDER' && (
+          <div>
+            {/* =============================================================== */}
+            {/* SUSUNAN KALENDER & DAFTAR JADWAL:                               */}
+            {/* - LAYAR HP: 1 Kolom (Kalender di Atas, Jadwal di Bawah)         */}
+            {/* - LAYAR PC: 2 Kolom Proporsional Selalu Berdampingan (5 : 7)    */}
+            {/* =============================================================== */}
+            <div
+              className={
+                isMobileLayout
+                  ? 'grid grid-cols-1 gap-3 items-start'
+                  : 'grid grid-cols-12 gap-6 items-start'
+              }
+            >
+              {/* ============================================================= */}
+              {/* KOLOM KIRI: KARTU KALENDER (+ RINGKASAN BULAN INI DI PC)      */}
+              {/* ============================================================= */}
+              <div className={isMobileLayout ? 'space-y-3' : 'col-span-5 space-y-4'}>
+                <div
+                  className={
+                    isMobileLayout
+                      ? 'rounded-[14px] px-3 py-2.5 sm:p-4 shadow-xl border backdrop-blur-md touch-pan-y overflow-hidden cursor-grab active:cursor-grabbing'
+                      : 'rounded-2xl p-5 shadow-2xl border backdrop-blur-md touch-pan-y overflow-hidden cursor-grab active:cursor-grabbing'
+                  }
+                  style={cardBgStyle}
+                  onTouchStart={(e) => {
+                    if (e.touches.length > 0) {
+                      handleCalendarSwipeStart(e.touches[0].clientX, e.touches[0].clientY);
+                    }
+                  }}
+                  onTouchMove={(e) => {
+                    if (e.touches.length > 0) {
+                      handleCalendarSwipeMove(e.touches[0].clientX, e.touches[0].clientY);
+                    }
+                  }}
+                  onTouchEnd={(e) => {
+                    if (e.changedTouches.length > 0) {
+                      handleCalendarSwipeEnd(
+                        e.changedTouches[0].clientX,
+                        e.changedTouches[0].clientY
+                      );
+                    } else {
+                      setCalendarDragOffset(0);
+                      isCalendarDragging.current = false;
+                    }
+                  }}
+                  onMouseDown={(e) => {
+                    handleCalendarSwipeStart(e.clientX, e.clientY);
+                  }}
+                  onMouseMove={(e) => {
+                    if (isCalendarDragging.current) {
+                      handleCalendarSwipeMove(e.clientX, e.clientY);
+                    }
+                  }}
+                  onMouseUp={(e) => {
+                    if (isCalendarDragging.current) {
+                      handleCalendarSwipeEnd(e.clientX, e.clientY);
+                    }
+                  }}
+                  onMouseLeave={() => {
+                    if (isCalendarDragging.current) {
+                      isCalendarDragging.current = false;
+                      calendarTouchStartX.current = null;
+                      calendarTouchStartY.current = null;
+                      setCalendarDragOffset(0);
+                    }
+                  }}
+                >
+                  <div
+                    className="transition-transform duration-150 ease-out"
+                    style={{
+                      transform:
+                        calendarDragOffset !== 0
+                          ? `translateX(${calendarDragOffset}px)`
+                          : 'translateX(0px)',
+                    }}
+                  >
+                    {/* Navigasi Bulan Kalender */}
+                    <div className="flex items-center justify-between mb-2">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setCurrentCalendarDate(
+                            new Date(
+                              currentCalendarDate.getFullYear(),
+                              currentCalendarDate.getMonth() - 1,
+                              1
+                            )
+                          )
+                        }
+                        className="p-1.5 rounded-xl hover:bg-white/10 transition-colors cursor-pointer"
+                        style={{ color: textPrimaryColor }}
+                      >
+                        <ChevronLeft className="w-5 h-5" />
+                      </button>
+
+                      <div className="text-center">
+                        <h2
+                          onClick={() => {
+                            setCurrentCalendarDate(new Date());
+                            setSelectedDateStr(null);
+                            setStatusFilter('SEMUA_BULAN');
+                          }}
+                          className="font-extrabold tracking-tight capitalize cursor-pointer"
+                          style={{
+                            fontSize: isMobileLayout ? '16px' : '18px',
+                            color: textPrimaryColor,
+                          }}
+                          title="Klik untuk kembali ke bulan ini"
+                        >
+                          {currentCalendarDate.toLocaleDateString('id-ID', {
+                            month: 'long',
+                            year: 'numeric',
+                          })}
+                        </h2>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setCurrentCalendarDate(
+                            new Date(
+                              currentCalendarDate.getFullYear(),
+                              currentCalendarDate.getMonth() + 1,
+                              1
+                            )
+                          )
+                        }
+                        className="p-1.5 rounded-xl hover:bg-white/10 transition-colors cursor-pointer"
+                        style={{ color: textPrimaryColor }}
+                      >
+                        <ChevronRight className="w-5 h-5" />
+                      </button>
+                    </div>
+
+                    {/* Header Nama Hari */}
+                    <div className="grid grid-cols-7 gap-0.5 text-center mb-1.5">
+                      {['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'].map((hari, idx) => (
+                        <div
+                          key={hari}
+                          className={`font-bold py-0.5 ${
+                            isMobileLayout ? 'text-[11px]' : 'text-xs'
+                          }`}
+                          style={{
+                            color: idx === 0 ? '#E74C3C' : textSecondaryColor,
+                          }}
+                        >
+                          {hari}
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Grid Tanggal Kalender (Rapat di HP, Proporsional & Nyaman di PC) */}
+                    <div
+                      className={
+                        isMobileLayout
+                          ? 'grid grid-cols-7 gap-y-0.5 gap-x-1 place-items-center'
+                          : 'grid grid-cols-7 gap-y-1.5 gap-x-1.5 place-items-center'
+                      }
+                    >
+                      {calendarDays.map((cell, idx) => {
+                        const cellSizeClass = isMobileLayout
+                          ? 'w-8 h-8 sm:w-9 sm:h-9'
+                          : 'w-10 h-10';
+
+                        if (!cell.dayNumber || !cell.dateKey) {
+                          return <div key={`empty-${idx}`} className={cellSizeClass} />;
+                        }
+
+                        const isSelected =
+                          selectedDateStr === cell.dateKey && statusFilter === 'TANGGAL_DIPILIH';
+
+                        const hasWeb = cell.events.some((e) => isUnconfirmedWebBooking(e));
+
+                        const officialEvents = cell.events.filter((e) => {
+                          const st = (e.status || '').trim().toLowerCase();
+                          return !isUnconfirmedWebBooking(e) && st !== 'dibatalkan';
+                        });
+
+                        const hasLunas = officialEvents.some(
+                          (e) => (e.status || '').trim().toLowerCase() === 'lunas'
+                        );
+                        const hasSudahDp = officialEvents.some((e) => {
+                          const st = (e.status || '').trim().toLowerCase();
+                          if (st === 'lunas') return false;
+                          return st === 'dp' || st === 'sudah dp' || (e.dpDibayar || 0) > 0;
+                        });
+                        const hasBookingBaru = officialEvents.some((e) => {
+                          const st = (e.status || '').trim().toLowerCase();
+                          if (st === 'lunas') return false;
+                          const sudahDp =
+                            st === 'dp' || st === 'sudah dp' || (e.dpDibayar || 0) > 0;
+                          return !sudahDp;
+                        });
+
+                        return (
+                          <button
+                            key={cell.dateKey}
+                            type="button"
+                            onClick={() => {
+                              setSelectedDateStr(cell.dateKey);
+                              setStatusFilter('TANGGAL_DIPILIH');
+                              bumpCacheHit();
+                            }}
+                            className={`relative ${cellSizeClass} rounded-full flex items-center justify-center transition-transform hover:scale-105 cursor-pointer`}
+                            style={{
+                              backgroundColor: isSelected
+                                ? '#2980B9'
+                                : cell.isToday
+                                ? 'rgba(255, 255, 255, 0.2)'
+                                : 'transparent',
+                            }}
+                            title={
+                              cell.events.length > 0
+                                ? `${cell.events.length} Jadwal pada tanggal ${cell.dayNumber}`
+                                : `Tanggal ${cell.dayNumber}`
+                            }
+                          >
+                            {/* 1. Lingkaran Coretan Tangan Oranye (#F39C12) - Booking (Belum DP) */}
+                            {hasBookingBaru && (
+                              <svg
+                                viewBox="0 0 24 24"
+                                className="absolute inset-0 w-full h-full pointer-events-none"
+                              >
+                                <path
+                                  stroke="#F39C12"
+                                  strokeWidth="1.2"
+                                  fill="none"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  d="M11.5,3.5 C16,2.5 21.5,6 21,12.5 C20.5,19 14.5,21.5 9,20.5 C3.5,19.5 2.5,13 4,8.5 C5.5,4 9.5,3 12.5,4"
+                                />
+                              </svg>
+                            )}
+
+                            {/* 2. Lingkaran Kaligrafi Merah (#E74C3C) - Sudah DP (Belum Lunas) */}
+                            {hasSudahDp && (
+                              <svg
+                                viewBox="0 0 24 24"
+                                className="absolute inset-0 w-full h-full pointer-events-none"
+                              >
+                                <path
+                                  fill="#E74C3C"
+                                  d="M 12,2 C 18,2 23,7 23,13 C 23,19 18,23 12,23 C 6,23 2,19 2,13 C 2,8 5,4 10,3 C 15,2 19,5 19,10 C 19,15 15,19 10,19 C 8,19 6,18 4,16 C 6,17 7,18 10,18 C 14,18 18,14 18,10 C 18,6 14,3.5 10,4.5 C 6,5.5 3,9 3,13 C 3,18 7,22 12,22 C 17,22 22,18 22,13 C 22,8 17,3 12,2 Z"
+                                />
+                              </svg>
+                            )}
+
+                            {/* 3. Lingkaran Kaligrafi Hijau (#27AE60) - Lunas */}
+                            {hasLunas && !hasSudahDp && !hasBookingBaru && (
+                              <svg
+                                viewBox="0 0 24 24"
+                                className="absolute inset-0 w-full h-full pointer-events-none"
+                              >
+                                <path
+                                  fill="#27AE60"
+                                  d="M 12,2 C 18,2 23,7 23,13 C 23,19 18,23 12,23 C 6,23 2,19 2,13 C 2,8 5,4 10,3 C 15,2 19,5 19,10 C 19,15 15,19 10,19 C 8,19 6,18 4,16 C 6,17 7,18 10,18 C 14,18 18,14 18,10 C 18,6 14,3.5 10,4.5 C 6,5.5 3,9 3,13 C 3,18 7,22 12,22 C 17,22 22,18 22,13 C 22,8 17,3 12,2 Z"
+                                />
+                              </svg>
+                            )}
+
+                            {/* 4. Huruf W Presisi Kuning Emas (#FFCE1b) di Pojok Kiri Atas - Pesanan Web */}
+                            {hasWeb && (
+                              <svg
+                                viewBox="0 0 24 24"
+                                className="absolute -top-0.5 -left-0.5 w-3.5 h-3.5 sm:w-4 sm:h-4 z-20 pointer-events-none drop-shadow"
+                              >
+                                <path
+                                  fill="#FFCE1b"
+                                  stroke="#000000"
+                                  strokeWidth="0.3"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  d="M 3,5 L 8,19 L 12,12 L 16,19 L 21,5 L 17,5 L 14,14 L 12,10 L 10,14 L 7,5 Z"
+                                />
+                              </svg>
+                            )}
+
+                            {/* Angka Tanggal */}
+                            <span
+                              className={`relative z-10 font-bold ${
+                                isMobileLayout ? 'text-xs' : 'text-sm'
+                              }`}
+                              style={{
+                                color: isSelected ? '#FFFFFF' : textPrimaryColor,
+                              }}
+                            >
+                              {cell.dayNumber}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {/* Keterangan Indikator Tanggal SVG APK: Booking Web • Booking • Sudah DP • Lunas */}
+                    <div
+                      className="mt-3 pt-2.5 border-t flex flex-wrap items-center justify-between gap-1.5 text-[10px] sm:text-[11px]"
+                      style={{
+                        borderColor: isKacaGelap ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)',
+                        color: textSecondaryColor,
+                      }}
+                    >
+                      <div className="flex items-center gap-1">
+                        <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 shrink-0">
+                          <path
+                            fill="#FFCE1b"
+                            stroke="#000000"
+                            strokeWidth="0.3"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            d="M 3,5 L 8,19 L 12,12 L 16,19 L 21,5 L 17,5 L 14,14 L 12,10 L 10,14 L 7,5 Z"
+                          />
+                        </svg>
+                        <span>Booking Web</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 shrink-0">
+                          <path
+                            stroke="#F39C12"
+                            strokeWidth="1.6"
+                            fill="none"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            d="M11.5,3.5 C16,2.5 21.5,6 21,12.5 C20.5,19 14.5,21.5 9,20.5 C3.5,19.5 2.5,13 4,8.5 C5.5,4 9.5,3 12.5,4"
+                          />
+                        </svg>
+                        <span>Booking</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 shrink-0">
+                          <path
+                            fill="#E74C3C"
+                            d="M 12,2 C 18,2 23,7 23,13 C 23,19 18,23 12,23 C 6,23 2,19 2,13 C 2,8 5,4 10,3 C 15,2 19,5 19,10 C 19,15 15,19 10,19 C 8,19 6,18 4,16 C 6,17 7,18 10,18 C 14,18 18,14 18,10 C 18,6 14,3.5 10,4.5 C 6,5.5 3,9 3,13 C 3,18 7,22 12,22 C 17,22 22,18 22,13 C 22,8 17,3 12,2 Z"
+                          />
+                        </svg>
+                        <span>Sudah DP</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 shrink-0">
+                          <path
+                            fill="#27AE60"
+                            d="M 12,2 C 18,2 23,7 23,13 C 23,19 18,23 12,23 C 6,23 2,19 2,13 C 2,8 5,4 10,3 C 15,2 19,5 19,10 C 19,15 15,19 10,19 C 8,19 6,18 4,16 C 6,17 7,18 10,18 C 14,18 18,14 18,10 C 18,6 14,3.5 10,4.5 C 6,5.5 3,9 3,13 C 3,18 7,22 12,22 C 17,22 22,18 22,13 C 22,8 17,3 12,2 Z"
+                          />
+                        </svg>
+                        <span>Lunas</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* KHUSUS LAYAR PC: 4 Kartu Statistik Bulan Ini di Bawah Kalender */}
+                {!isMobileLayout && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedDateStr(null);
+                        setStatusFilter('SEMUA_BULAN');
+                      }}
+                      className="rounded-xl p-3.5 border text-left transition-transform hover:scale-[1.01] cursor-pointer shadow-md"
+                      style={cardBgStyle}
+                    >
+                      <p className="text-[11px] font-bold" style={{ color: textSecondaryColor }}>
+                        Total Event Bulan Ini
+                      </p>
+                      <p className="text-xl font-black mt-0.5 text-[#64B5F6]">
+                        {ringkasanBulanIni.totalEventBulanIni} Jadwal
+                      </p>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedDateStr(null);
+                        setStatusFilter('LUNAS');
+                      }}
+                      className="rounded-xl p-3.5 border text-left transition-transform hover:scale-[1.01] cursor-pointer shadow-md"
+                      style={cardBgStyle}
+                    >
+                      <p className="text-[11px] font-bold" style={{ color: textSecondaryColor }}>
+                        Sudah Lunas
+                      </p>
+                      <p className="text-xl font-black mt-0.5 text-[#2ECC71]">
+                        {ringkasanBulanIni.jmlLunas} Jadwal
+                      </p>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedDateStr(null);
+                        setStatusFilter('SUDAH_DP');
+                      }}
+                      className="rounded-xl p-3.5 border text-left transition-transform hover:scale-[1.01] cursor-pointer shadow-md"
+                      style={cardBgStyle}
+                    >
+                      <p className="text-[11px] font-bold" style={{ color: textSecondaryColor }}>
+                        Sudah DP (Belum Lunas)
+                      </p>
+                      <p className="text-xl font-black mt-0.5 text-[#E74C3C]">
+                        {ringkasanBulanIni.jmlSudahDp} Jadwal
+                      </p>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedDateStr(null);
+                        setStatusFilter('BOOKING_BARU');
+                      }}
+                      className="rounded-xl p-3.5 border text-left transition-transform hover:scale-[1.01] cursor-pointer shadow-md"
+                      style={cardBgStyle}
+                    >
+                      <p className="text-[11px] font-bold" style={{ color: textSecondaryColor }}>
+                        Booking (Belum DP)
+                      </p>
+                      <p className="text-xl font-black mt-0.5 text-[#F39C12]">
+                        {ringkasanBulanIni.jmlBookingBaru} Jadwal
+                      </p>
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* ============================================================= */}
+              {/* KOLOM KANAN: DAFTAR JADWAL (DI BAWAH SAAT HP, DI KANAN SAAT PC) */}
+              {/* ============================================================= */}
+              <div
+                className={
+                  isMobileLayout
+                    ? 'space-y-2.5'
+                    : 'col-span-7 rounded-2xl p-5 border shadow-2xl backdrop-blur-md space-y-4'
+                }
+                style={isMobileLayout ? undefined : cardBgStyle}
+              >
+                {/* Judul Tanggal (Misal: "5 Oktober 2026") digeser sedikit ke dalam saat di HP */}
+                <div
+                  className={`flex flex-wrap items-center justify-between gap-2 ${
+                    isMobileLayout ? 'px-2.5' : 'pb-3 border-b border-white/10'
+                  }`}
+                >
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h2
+                      className="font-extrabold capitalize"
+                      style={{
+                        fontSize: isMobileLayout ? '15px' : '18px',
+                        color: isMobileLayout ? '#FFFFFF' : textPrimaryColor,
+                        textShadow: isMobileLayout ? '1px 1px 3px rgba(0,0,0,0.8)' : undefined,
+                      }}
+                    >
+                      {formatJudulTanggalPilihan(selectedDateStr)}
+                    </h2>
+
+                    {/* Spam button removed as requested */}
+                  </div>
+
+                  {!isMobileLayout && !isKruAnggota && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingJadwal(null);
+                        setFormModalMode('TAMBAH_AGENDA');
+                      }}
+                      className="px-3.5 py-1.5 rounded-lg text-xs font-extrabold text-white flex items-center gap-1.5 shadow cursor-pointer"
+                      style={{ backgroundColor: '#2980B9' }}
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Jadwal Baru</span>
+                    </button>
+                  )}
+                </div>
+
+                {/* KHUSUS LAYAR PC: Bar Filter Status di Atas Daftar Jadwal agar Mudah Dijangkau */}
+                {!isMobileLayout && (
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {(
+                      [
+                        {
+                          id: 'SEMUA_BULAN',
+                          label: `Semua Bulan Ini (${ringkasanBulanIni.totalEventBulanIni})`,
+                          activeBg: '#2980B9',
+                        },
+                        {
+                          id: 'BELUM_LUNAS',
+                          label: `Belum Lunas (${
+                            ringkasanBulanIni.jmlBookingBaru + ringkasanBulanIni.jmlSudahDp
+                          })`,
+                          activeBg: '#E67E22',
+                        },
+                        {
+                          id: 'SUDAH_DP',
+                          label: `Sudah DP (${ringkasanBulanIni.jmlSudahDp})`,
+                          activeBg: '#E74C3C',
+                        },
+                        {
+                          id: 'BOOKING_BARU',
+                          label: `Booking (${ringkasanBulanIni.jmlBookingBaru})`,
+                          activeBg: '#F39C12',
+                        },
+                        {
+                          id: 'LUNAS',
+                          label: `Lunas (${ringkasanBulanIni.jmlLunas})`,
+                          activeBg: '#27AE60',
+                        },
+                      ] as const
+                    ).map((f) => {
+                      const isActive = statusFilter === f.id;
+                      return (
+                        <button
+                          key={f.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedDateStr(null);
+                            setStatusFilter(f.id);
+                            bumpCacheHit();
+                          }}
+                          className="px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer shadow-xs"
+                          style={{
+                            backgroundColor: isActive ? f.activeBg : 'rgba(0, 0, 0, 0.35)',
+                            color: '#FFFFFF',
+                            border: isActive
+                              ? '1px solid rgba(255, 255, 255, 0.5)'
+                              : '1px solid rgba(255, 255, 255, 0.12)',
+                          }}
+                        >
+                          {f.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Panel Khusus Pesanan Form Web yang Belum Dikonfirmasi (Hanya untuk Owner & Admin) */}
+                {!isKruAnggota && pesananWebPadaTanggalDipilih.length > 0 && (
+                  <div
+                    className="rounded-[12px] p-3.5 border shadow-lg space-y-2.5"
+                    style={{
+                      backgroundColor: '#2C3E50',
+                      borderColor: '#FFCE1b',
+                    }}
+                  >
+                    <div
+                      className="flex items-center gap-2 cursor-pointer"
+                      onClick={() => setShowHapusSpamBtn((prev) => !prev)}
+                      title="Klik ikon W untuk memunculkan tombol Bersihkan Semua Spam di samping tanggal"
+                    >
+                      <svg viewBox="0 0 24 24" className="w-4 h-4 shrink-0">
+                        <path
+                          fill="#FFCE1b"
+                          stroke="#000000"
+                          strokeWidth="0.3"
+                          d="M 3,5 L 8,19 L 12,12 L 16,19 L 21,5 L 17,5 L 14,14 L 12,10 L 10,14 L 7,5 Z"
+                        />
+                      </svg>
+                      <div>
+                        <p className="text-xs font-extrabold text-[#FFCE1b]">
+                          Form Booking Web
+                        </p>
+                        <p className="text-[11px] text-slate-300">
+                          Konfirmasikan pesanan di bawah ini
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      {pesananWebPadaTanggalDipilih.map((webItem) => (
+                        <div
+                          key={webItem.idJadwal}
+                          className="rounded-xl p-3 bg-black/30 border border-white/10 flex flex-wrap items-center justify-between gap-2.5"
+                        >
+                          <div>
+                            <p className="font-bold text-xs sm:text-sm text-white">
+                              {statusFilter === 'BOOKING_WEB'
+                                ? `${formatTanggalIndo(webItem.tanggalMulai || webItem.waktuMulai)} • `
+                                : ''}
+                              {webItem.namaAcara} — {webItem.namaKlien} ({webItem.waPic || '-'})
+                            </p>
+                            <p className="text-xs text-[#64B5F6] font-bold mt-0.5">
+                              {webItem.paket} ({keRupiah(webItem.hargaKotor)}) • {webItem.lokasi}
+                            </p>
+                            {webItem.catatan && (
+                              <p className="text-[11px] text-amber-200 mt-1 italic">
+                                "{webItem.catatan}"
+                              </p>
+                            )}
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setWebConfirmTarget(webItem);
+                                setWebConfirmDpStr('');
+                                setWebConfirmExtraName('');
+                                setWebConfirmExtraStr('');
+                              }}
+                              className="px-3 py-1.5 rounded-lg text-xs font-extrabold text-white cursor-pointer"
+                              style={{ backgroundColor: '#27AE60' }}
+                            >
+                              ✅ Konfirmasikan
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                handleDeleteJadwal(webItem.idJadwal);
+                                setToastMessage('⚠️ Pesanan web telah ditolak dan dihapus dari sistem.');
+                                setTimeout(() => setToastMessage(null), 3500);
+                              }}
+                              className="px-3 py-1.5 rounded-lg text-xs font-extrabold text-white cursor-pointer"
+                              style={{ backgroundColor: '#E74C3C' }}
+                            >
+                              ❌ Tolak / Hapus
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Daftar Kartu Jadwal Resmi */}
+                {statusFilter === 'BOOKING_WEB' ? (
+                  pesananWebPadaTanggalDipilih.length === 0 ? (
+                    <div
+                      className={`rounded-[12px] text-center border backdrop-blur-md ${
+                        isMobileLayout ? 'py-5 px-4' : 'py-12 px-6 bg-black/20 border-white/10'
+                      }`}
+                      style={isMobileLayout ? cardBgStyle : undefined}
+                    >
+                      <p className="font-bold text-xs sm:text-sm" style={{ color: textPrimaryColor }}>
+                        Tidak ada pesanan Web menunggu konfirmasi
+                      </p>
+                    </div>
+                  ) : null
+                ) : filteredScheduleList.length === 0 ? (
+                  <div
+                    className={`rounded-[12px] text-center border backdrop-blur-md ${
+                      isMobileLayout
+                        ? 'py-5 px-4'
+                        : 'py-14 px-6 bg-black/20 border-white/10 flex flex-col items-center justify-center space-y-3'
+                    }`}
+                    style={isMobileLayout ? cardBgStyle : undefined}
+                  >
+                    <p className="font-bold text-xs sm:text-sm" style={{ color: textPrimaryColor }}>
+                      {statusFilter === 'TANGGAL_DIPILIH'
+                        ? 'Tidak ada event di tanggal ini'
+                        : 'Tidak ada event di bulan ini'}
+                    </p>
+                    {!isMobileLayout && (
+                      <div className="flex flex-wrap items-center justify-center gap-2.5 pt-1">
+                        {!isKruAnggota && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingJadwal(null);
+                              setFormModalMode('TAMBAH_AGENDA');
+                            }}
+                            className="px-4 py-2 rounded-xl text-xs font-extrabold text-white bg-[#2980B9] hover:opacity-95 shadow cursor-pointer flex items-center gap-1.5"
+                          >
+                            <Plus className="w-4 h-4" />
+                            <span>Tambah Jadwal di Tanggal Ini</span>
+                          </button>
+                        )}
+                        {ringkasanBulanIni.totalEventBulanIni > 0 &&
+                          statusFilter === 'TANGGAL_DIPILIH' && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedDateStr(null);
+                                setStatusFilter('SEMUA_BULAN');
+                              }}
+                              className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-white/10 hover:bg-white/15 border border-white/15 cursor-pointer"
+                            >
+                              Lihat Semua Bulan Ini ({ringkasanBulanIni.totalEventBulanIni} Event)
+                            </button>
+                          )}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div
+                    className={
+                      isMobileLayout
+                        ? 'space-y-2'
+                        : 'space-y-3 max-h-[68vh] overflow-y-auto pr-1'
+                    }
+                  >
+                    {filteredScheduleList.map((item) => {
+                      const stLower = item.status.toLowerCase();
+                      const isSudahDp =
+                        stLower !== 'lunas' &&
+                        stLower !== 'dibatalkan' &&
+                        (stLower === 'dp' || stLower === 'sudah dp' || (item.dpDibayar || 0) > 0);
+
+                      const statusStripColor =
+                        stLower === 'lunas'
+                          ? '#27AE60'
+                          : stLower === 'dibatalkan'
+                          ? '#7F8C8D'
+                          : isSudahDp
+                          ? '#E74C3C'
+                          : '#F39C12';
+
+                      const statusBadgeLabel =
+                        stLower === 'lunas'
+                          ? 'LUNAS'
+                          : isSudahDp
+                          ? 'SUDAH DP'
+                          : 'BOOKING';
+
+                      const totalBersih = Math.max(0, item.hargaKotor - item.diskon);
+                      const sisaTagihan = Math.max(0, totalBersih - item.dpDibayar);
+
+                      return (
+                        <div
+                          key={item.idJadwal}
+                          onClick={() => setAksiJadwalTarget(item)}
+                          className={`rounded-[11px] overflow-hidden shadow-md border flex cursor-pointer transition-transform hover:scale-[1.005] ${
+                            isMobileLayout ? '' : 'bg-black/25 border-white/10 hover:bg-black/35'
+                          }`}
+                          style={isMobileLayout ? cardBgStyle : undefined}
+                        >
+                          {/* Garis Status Kiri */}
+                          <div
+                            className="w-[6px] shrink-0"
+                            style={{ backgroundColor: statusStripColor }}
+                          />
+
+                          {/* Isi Kartu Jadwal */}
+                          <div className={isMobileLayout ? 'flex-1 px-3 py-2.5' : 'flex-1 px-4 py-3.5'}>
+                            {/* Baris Atas: Jam + Nama Acara & Badge Status */}
+                            <div className="flex items-start justify-between gap-2">
+                              <h3
+                                className="font-bold leading-snug"
+                                style={{
+                                  fontSize: isMobileLayout ? '13.5px' : '15px',
+                                  color: textPrimaryColor,
+                                }}
+                              >
+                                {statusFilter !== 'TANGGAL_DIPILIH'
+                                  ? `${formatTanggalIndo(item.tanggalMulai || item.waktuMulai)} • ${formatJamWIB(item.waktuMulai)} - ${item.namaAcara}`
+                                  : `${formatJamWIB(item.waktuMulai)} - ${item.namaAcara}`}
+                              </h3>
+
+                              <span
+                                className="px-2.5 py-0.5 rounded font-bold uppercase shrink-0"
+                                style={{
+                                  fontSize: isMobileLayout ? '10px' : '11px',
+                                  backgroundColor: isKacaGelap
+                                    ? 'rgba(255,255,255,0.1)'
+                                    : '#ECF0F1',
+                                  color: statusStripColor,
+                                }}
+                              >
+                                {statusBadgeLabel}
+                              </span>
+                            </div>
+
+                            {/* Nama Klien & WA */}
+                            <p
+                              className="mt-0.5 leading-snug"
+                              style={{
+                                fontSize: isMobileLayout ? '12px' : '13px',
+                                color: textSecondaryColor,
+                              }}
+                            >
+                              {item.namaKlien} ({item.waPic || '-'})
+                            </p>
+
+                            {/* Paket */}
+                            <p
+                              className="mt-0.5 font-bold leading-snug"
+                              style={{
+                                fontSize: isMobileLayout ? '12px' : '13px',
+                                color: '#64B5F6',
+                              }}
+                            >
+                              {item.paket || '-'}
+                              {item.namaTambahan ? ` + ${item.namaTambahan}` : ''}
+                            </p>
+
+                            {/* Lokasi */}
+                            <p
+                              className="mt-0.5 leading-snug"
+                              style={{
+                                fontSize: isMobileLayout ? '11.5px' : '12.5px',
+                                color: textSecondaryColor,
+                              }}
+                            >
+                              {item.lokasi || 'Studio'}
+                            </p>
+
+                            {/* Garis Pemisah & Baris Harga */}
+                            {!isKruAnggota && (
+                              <>
+                                <div
+                                  className="my-2 h-px"
+                                  style={{
+                                    backgroundColor: isKacaGelap
+                                      ? 'rgba(255,255,255,0.12)'
+                                      : '#EEEEEE',
+                                  }}
+                                />
+                                <div className="flex items-center justify-between text-xs sm:text-sm font-bold">
+                                  <span style={{ color: textPrimaryColor }}>
+                                    Total: {keRupiah(totalBersih)}
+                                  </span>
+                                  <span
+                                    style={{
+                                      color:
+                                        sisaTagihan <= 0 || stLower === 'lunas'
+                                          ? '#27AE60'
+                                          : '#E74C3C',
+                                    }}
+                                  >
+                                    {sisaTagihan <= 0 || stLower === 'lunas'
+                                      ? 'LUNAS'
+                                      : `Sisa: ${keRupiah(sisaTagihan)}`}
+                                  </span>
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* BAR FILTER STATUS DI PALING BAWAH KHUSUS LAYAR HP */}
+                {isMobileLayout && (
+                  <div className="mt-3 pt-2.5 border-t border-white/15 flex flex-wrap items-center gap-1.5">
+                    {(
+                      [
+                        {
+                          id: 'SEMUA_BULAN',
+                          label: `Semua Bulan Ini (${ringkasanBulanIni.totalEventBulanIni})`,
+                          activeBg: '#2980B9',
+                        },
+                        {
+                          id: 'BELUM_LUNAS',
+                          label: `Belum Lunas (${
+                            ringkasanBulanIni.jmlBookingBaru + ringkasanBulanIni.jmlSudahDp
+                          })`,
+                          activeBg: '#E67E22',
+                        },
+                        {
+                          id: 'SUDAH_DP',
+                          label: `Sudah DP (${ringkasanBulanIni.jmlSudahDp})`,
+                          activeBg: '#E74C3C',
+                        },
+                        {
+                          id: 'BOOKING_BARU',
+                          label: `Booking (${ringkasanBulanIni.jmlBookingBaru})`,
+                          activeBg: '#F39C12',
+                        },
+                        {
+                          id: 'LUNAS',
+                          label: `Lunas (${ringkasanBulanIni.jmlLunas})`,
+                          activeBg: '#27AE60',
+                        },
+                      ] as const
+                    ).map((f) => {
+                      const isActive = statusFilter === f.id;
+                      return (
+                        <button
+                          key={f.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedDateStr(null);
+                            setStatusFilter(f.id);
+                            bumpCacheHit();
+                          }}
+                          className="px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition-all cursor-pointer shadow-xs"
+                          style={{
+                            backgroundColor: isActive ? f.activeBg : 'rgba(0, 0, 0, 0.35)',
+                            color: '#FFFFFF',
+                            border: isActive
+                              ? '1px solid rgba(255, 255, 255, 0.5)'
+                              : '1px solid rgba(255, 255, 255, 0.12)',
+                          }}
+                        >
+                          {f.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* TAB MANAJEMEN LAINNYA */}
+        {activeTab === 'LAPORAN' && !isKruAnggota && (
+          <LaporanKeuanganView
+            jadwalAktif={jadwalAktif}
+            onSelectJadwal={(j) => setAksiJadwalTarget(j)}
+            userRole={userRole}
+          />
+        )}
+
+        {activeTab === 'ARSIP' && !isKruAnggota && (
+          <ArsipPencarianView
+            jadwalAktif={jadwalAktif}
+            jadwalArsip={jadwalArsip}
+            onSelectAktif={(j) => setAksiJadwalTarget(j)}
+            onRestoreFromArsip={async (j) => {
+              setJadwalArsip((prev) => prev.filter((x) => x.idJadwal !== j.idJadwal));
+              setJadwalAktif((prev) => [{ ...j, isFromArchive: false }, ...prev]);
+              if (sessionMode === 'FIREBASE') {
+                await restoreArsipToFirebase(targetOwnerId, j);
+              }
+            }}
+            onRunCompression60Days={() => {
+              const batas60HariMs = Date.now() - 60 * 24 * 60 * 60 * 1000;
+              const lama = jadwalAktif.filter((j) => {
+                const waktuAcara = j.tanggalSelesaiEvent || j.tanggalMulai || j.waktuMulai || 0;
+                return waktuAcara > 0 && waktuAcara < batas60HariMs;
+              });
+              if (lama.length > 0) {
+                const idsKompres = new Set(lama.map((x) => x.idJadwal));
+                setJadwalAktif((prev) => prev.filter((j) => !idsKompres.has(j.idJadwal)));
+                setJadwalArsip((prev) => [
+                  ...lama.map((x) => {
+                    const d = new Date(x.tanggalMulai || x.waktuMulai || Date.now());
+                    return {
+                      ...x,
+                      isFromArchive: true,
+                      archiveDocId: `arsip_${d.getFullYear()}_${String(d.getMonth() + 1).padStart(2, '0')}`,
+                    };
+                  }),
+                  ...prev,
+                ]);
+                if (sessionMode === 'FIREBASE') {
+                  compressOldSchedulesToFirebase(targetOwnerId, lama).catch((err) =>
+                    console.warn('Gagal kompresi manual ke Firebase:', err)
+                  );
+                }
+              }
+              return lama.length;
+            }}
+          />
+        )}
+
+        {activeTab === 'PAKET' && !isKruAnggota && (
+          <MasterPaketView
+            paketList={paketList}
+            onSavePaket={async (p) => {
+              setPaketList((prev) => {
+                const exists = prev.some((x) => x.idPaket === p.idPaket);
+                if (exists) return prev.map((x) => (x.idPaket === p.idPaket ? p : x));
+                return [...prev, p];
+              });
+              if (sessionMode === 'FIREBASE') {
+                await savePaketToFirebase(targetOwnerId, p);
+              }
+            }}
+            onDeletePaket={async (idPaket) => {
+              setPaketList((prev) => prev.filter((x) => x.idPaket !== idPaket));
+              if (sessionMode === 'FIREBASE') {
+                await deletePaketFromFirebase(targetOwnerId, idPaket);
+              }
+            }}
+            onMoveOrder={async (idx, direction) => {
+              const targetIdx = idx + direction;
+              if (targetIdx < 0 || targetIdx >= paketList.length) return;
+              const copy = [...paketList];
+              const temp = copy[idx];
+              copy[idx] = copy[targetIdx];
+              copy[targetIdx] = temp;
+              const reordered = copy.map((item, i) => ({ ...item, urutan: i }));
+              setPaketList(reordered);
+              if (sessionMode === 'FIREBASE') {
+                for (const p of reordered) {
+                  await savePaketToFirebase(targetOwnerId, p);
+                }
+              }
+            }}
+          />
+        )}
+
+        {activeTab === 'TIM' && !isKruAnggota && (
+          <KelolaTimView
+            timList={timList}
+            namaBrand={owner.namaBrand}
+            ownerUid={targetOwnerId}
+            onAddTim={async (anggota) => {
+              setTimList((prev) => [...prev, anggota]);
+              setQuotaStats((prev) => ({ ...prev, writesSession: prev.writesSession + 1 }));
+              if (sessionMode === 'FIREBASE') {
+                await saveTimToFirebase(targetOwnerId, anggota);
+              }
+            }}
+            onRemoveTim={async (uid) => {
+              setTimList((prev) => prev.filter((x) => x.uid !== uid));
+              setQuotaStats((prev) => ({ ...prev, writesSession: prev.writesSession + 1 }));
+              if (sessionMode === 'FIREBASE') {
+                await deleteTimFromFirebase(targetOwnerId, uid);
+              }
+            }}
+          />
+        )}
+
+        {activeTab === 'PENGATURAN' && !isKruAnggota && (
+          <PengaturanStudioView
+            owner={owner}
+            rekening={rekening}
+            initialSubTab={pengaturanSubTab}
+            onUpdateOwner={async (updates) => {
+              setOwner((prev) => ({ ...prev, ...updates }));
+              if (sessionMode === 'FIREBASE') {
+                await saveOwnerProfileToFirebase(targetOwnerId, updates);
+              }
+            }}
+            onUpdateRekening={async (rek) => {
+              setRekening(rek);
+              if (sessionMode === 'FIREBASE') {
+                await saveRekeningToFirebase(targetOwnerId, rek);
+              }
+            }}
+            onOpenSignatureModal={() => setSignatureModalOpen(true)}
+          />
+        )}
+      </main>
+      </div>
+
+      {/* ===================================================================== */}
+      {/* FLOATING ACTION BUTTON (+) PERSIS fabTambah DI activity_main.xml      */}
+      {/* ===================================================================== */}
+      {!isKruAnggota && (
+        <button
+          type="button"
+          onClick={() => setFabChoiceOpen(true)}
+          className="fixed bottom-6 right-6 z-40 w-14 h-14 rounded-full flex items-center justify-center shadow-2xl border border-white/20 hover:scale-105 transition-transform cursor-pointer"
+          style={{ backgroundColor: '#2C3E50', color: '#FFFFFF' }}
+          title="Tambah Jadwal / Kasir Cepat"
+        >
+          <Plus className="w-7 h-7" />
+        </button>
+      )}
+
+      {/* ===================================================================== */}
+      {/* POPUP MENU AKSI JADWAL PERSIS dialog_aksi_jadwal.xml APK ANDROID      */}
+      {/* ===================================================================== */}
+      {aksiJadwalTarget && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+          onClick={() => setAksiJadwalTarget(null)}
+        >
+          <div
+            className="w-full max-w-[420px] rounded-2xl p-6 shadow-2xl space-y-3"
+            style={{ backgroundColor: '#FFFFFF', color: '#2C3E50' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {isKruAnggota ? (
+              <>
+                <div className="text-center pb-2 border-b border-slate-100">
+                  <span className="px-2.5 py-1 rounded-full text-[11px] font-extrabold bg-blue-100 text-blue-700 uppercase">
+                    Detail Penugasan Kru
+                  </span>
+                  <h3 className="text-lg font-black mt-2 text-slate-900 leading-snug">
+                    {aksiJadwalTarget.namaAcara}
+                  </h3>
+                  <p className="text-xs text-slate-500 font-medium">
+                    Klien: {aksiJadwalTarget.namaKlien}
+                  </p>
+                </div>
+
+                <div className="space-y-2 text-xs">
+                  <div className="bg-slate-50 p-3 rounded-xl space-y-1.5 border border-slate-200">
+                    <p className="font-bold text-slate-700 flex items-center gap-2">
+                      📅 <span className="text-slate-900">{formatTanggalIndo(aksiJadwalTarget.tanggalMulai || aksiJadwalTarget.waktuMulai)}</span>
+                    </p>
+                    <p className="font-bold text-slate-700 flex items-center gap-2">
+                      ⏰ <span className="text-slate-900">{formatJamWIB(aksiJadwalTarget.waktuMulai)} - {aksiJadwalTarget.waktuSelesai ? formatJamWIB(aksiJadwalTarget.waktuSelesai) : 'Selesai'}</span>
+                    </p>
+                    <p className="font-bold text-slate-700 flex items-center gap-2">
+                      📍 <span className="text-slate-900">{aksiJadwalTarget.lokasi || 'Studio'}</span>
+                    </p>
+                    <p className="font-bold text-slate-700 flex items-center gap-2">
+                      📦 <span className="text-slate-900">{aksiJadwalTarget.paket || '-'} {aksiJadwalTarget.namaTambahan ? `+ ${aksiJadwalTarget.namaTambahan}` : ''}</span>
+                    </p>
+                  </div>
+
+                  {aksiJadwalTarget.attire && (
+                    <div className="p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-900">
+                      <span className="font-bold">👔 Attire / Kostum:</span>{' '}
+                      {[
+                        aksiJadwalTarget.attire.cpwModel && `CPW: ${aksiJadwalTarget.attire.cpwModel} (${aksiJadwalTarget.attire.cpwUkuran || '-'})`,
+                        aksiJadwalTarget.attire.cppModel && `CPP: ${aksiJadwalTarget.attire.cppModel} (${aksiJadwalTarget.attire.cppUkuran || '-'})`,
+                        aksiJadwalTarget.attire.catatanAttire,
+                      ].filter(Boolean).join(' | ') || 'Tersedia'}
+                    </div>
+                  )}
+
+                  {aksiJadwalTarget.fotoTeknis && (
+                    <div className="p-2.5 rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-900">
+                      <span className="font-bold">📷 Catatan Teknis Foto:</span>{' '}
+                      {[
+                        aksiJadwalTarget.fotoTeknis.jmlShooter && `Shooter: ${aksiJadwalTarget.fotoTeknis.jmlShooter}`,
+                        aksiJadwalTarget.fotoTeknis.droneLighting && `Drone/Lighting: ${aksiJadwalTarget.fotoTeknis.droneLighting}`,
+                        aksiJadwalTarget.fotoTeknis.namaKru && `Kru: ${aksiJadwalTarget.fotoTeknis.namaKru}`,
+                      ].filter(Boolean).join(' | ') || 'Tersedia'}
+                    </div>
+                  )}
+
+                  {aksiJadwalTarget.catatan && (
+                    <div className="p-2.5 rounded-lg bg-slate-100 border border-slate-200 text-slate-700">
+                      <span className="font-bold">📝 Catatan Acara:</span> {aksiJadwalTarget.catatan}
+                    </div>
+                  )}
+                </div>
+
+                <div className="pt-2 space-y-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const target = aksiJadwalTarget;
+                      setAksiJadwalTarget(null);
+                      setWaChoiceTarget(target);
+                    }}
+                    className="w-full py-3 px-4 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2 cursor-pointer text-white bg-[#1E88E5] hover:opacity-95 shadow"
+                  >
+                    <MessageCircle className="w-4 h-4" />
+                    <span>Hubungi Klien / PIC via WhatsApp</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAksiJadwalTarget(null)}
+                    className="w-full py-2.5 text-xs font-bold text-slate-500 hover:bg-slate-100 rounded-xl cursor-pointer"
+                  >
+                    Tutup
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <h3
+                  className="text-center font-bold"
+                  style={{ fontSize: '18px', color: '#2C3E50' }}
+                >
+                  Menu Aksi Jadwal
+                </h3>
+                <p
+                  className="text-center pb-3"
+                  style={{ fontSize: '14px', color: '#7F8C8D' }}
+                >
+                  {aksiJadwalTarget.namaAcara} - {aksiJadwalTarget.namaKlien}
+                </p>
+
+                {/* Hubungi Klien via WhatsApp (#E3F2FD / #1E88E5) */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const target = aksiJadwalTarget;
+                    setAksiJadwalTarget(null);
+                    setWaChoiceTarget(target);
+                  }}
+                  className="w-full py-3 px-4 rounded-xl font-bold text-sm flex items-center justify-center gap-2 cursor-pointer transition-opacity hover:opacity-90"
+                  style={{ backgroundColor: '#E3F2FD', color: '#1E88E5' }}
+                >
+                  <MessageCircle className="w-4 h-4" />
+                  <span>Hubungi Klien via WhatsApp</span>
+                </button>
+
+                {/* Lihat / Cetak Struk (Nota) */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const target = aksiJadwalTarget;
+                    setAksiJadwalTarget(null);
+                    setStrukModalJadwal(target);
+                  }}
+                  className="w-full py-3 px-4 rounded-xl font-bold text-sm flex items-center justify-center gap-2 border cursor-pointer hover:bg-slate-50"
+                  style={{ borderColor: '#BDC3C7', color: '#2C3E50' }}
+                >
+                  <Receipt className="w-4 h-4" />
+                  <span>Lihat / Cetak Struk (Nota)</span>
+                </button>
+
+                {/* Tandai Lunas (#27AE60) */}
+                <button
+                  type="button"
+                  onClick={() => handleTandaiLunas(aksiJadwalTarget)}
+                  className="w-full py-3 px-4 rounded-xl font-bold text-sm text-white flex items-center justify-center gap-2 cursor-pointer transition-opacity hover:opacity-95"
+                  style={{ backgroundColor: '#27AE60' }}
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>Tandai Lunas</span>
+                </button>
+
+                {/* Atur Nominal DP */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const target = aksiJadwalTarget;
+                    setAksiJadwalTarget(null);
+                    setDpModalTarget(target);
+                    setDpModalInputStr(
+                      target.dpDibayar > 0 ? formatRibuanInput(String(target.dpDibayar)) : ''
+                    );
+                  }}
+                  className="w-full py-3 px-4 rounded-xl font-bold text-sm border cursor-pointer hover:bg-slate-50"
+                  style={{ borderColor: '#BDC3C7', color: '#2C3E50' }}
+                >
+                  Atur Nominal DP
+                </button>
+
+                {/* Edit Data Jadwal */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const target = aksiJadwalTarget;
+                    setAksiJadwalTarget(null);
+                    setEditingJadwal(target);
+                    setFormModalMode('EDIT_JADWAL');
+                  }}
+                  className="w-full py-3 px-4 rounded-xl font-bold text-sm flex items-center justify-center gap-2 border cursor-pointer hover:bg-slate-50"
+                  style={{ borderColor: '#BDC3C7', color: '#2C3E50' }}
+                >
+                  <Edit3 className="w-4 h-4" />
+                  <span>Edit Data Jadwal</span>
+                </button>
+
+                {/* Batalkan Jadwal (#FFEBEE / #D32F2F) */}
+                <button
+                  type="button"
+                  onClick={() => handleBatalkanJadwal(aksiJadwalTarget)}
+                  className="w-full py-3 px-4 rounded-xl font-bold text-sm cursor-pointer transition-opacity hover:opacity-90 mt-2"
+                  style={{ backgroundColor: '#FFEBEE', color: '#D32F2F' }}
+                >
+                  Batalkan Jadwal
+                </button>
+
+                {/* Hapus Permanen */}
+                <button
+                  type="button"
+                  onClick={() => handleDeleteJadwal(aksiJadwalTarget.idJadwal)}
+                  className="w-full py-2.5 px-4 rounded-xl font-bold text-sm flex items-center justify-center gap-1.5 cursor-pointer hover:bg-red-50"
+                  style={{ color: '#D32F2F' }}
+                >
+                  <Trash2 className="w-4 h-4" />
+                  <span>Hapus Permanen</span>
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ===================================================================== */}
+      {/* DIALOG PILIH JENIS PESAN WHATSAPP (Tagihan vs Konfirmasi H-1)         */}
+      {/* ===================================================================== */}
+      {waChoiceTarget && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+          onClick={() => setWaChoiceTarget(null)}
+        >
+          <div
+            className="w-full max-w-sm rounded-2xl p-6 space-y-3"
+            style={{ backgroundColor: '#FFFFFF', color: '#2C3E50' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-base font-bold text-center">Pilih Jenis Pesan WhatsApp</h3>
+            <p className="text-xs text-center text-slate-500">
+              Klien: {waChoiceTarget.namaKlien} ({waChoiceTarget.waPic})
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                const t = waChoiceTarget;
+                setWaChoiceTarget(null);
+                handleKirimWA(t, 'TAGIHAN');
+              }}
+              className="w-full py-3 px-4 rounded-xl font-bold text-xs text-white bg-[#27AE60] cursor-pointer"
+            >
+              1. Tagih Sisa Pembayaran (Follow-up DP)
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const t = waChoiceTarget;
+                setWaChoiceTarget(null);
+                handleKirimWA(t, 'KONFIRMASI');
+              }}
+              className="w-full py-3 px-4 rounded-xl font-bold text-xs text-white bg-[#2980B9] cursor-pointer"
+            >
+              2. Konfirmasi Kehadiran (H-1 Acara)
+            </button>
+            <button
+              type="button"
+              onClick={() => setWaChoiceTarget(null)}
+              className="w-full py-2 text-xs font-bold text-slate-500 cursor-pointer"
+            >
+              Batal
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ===================================================================== */}
+      {/* DIALOG PILIH TAMBAH (+ FAB: Kasir Cepat vs Tambah Jadwal Baru)        */}
+      {/* ===================================================================== */}
+      {fabChoiceOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+          onClick={() => setFabChoiceOpen(false)}
+        >
+          <div
+            className="w-full max-w-sm rounded-2xl p-6 space-y-3"
+            style={{ backgroundColor: '#1E1E1E', color: '#FFFFFF' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-base font-bold text-center">Pilih Jenis Transaksi</h3>
+            <button
+              type="button"
+              onClick={() => {
+                setFabChoiceOpen(false);
+                setEditingJadwal(null);
+                setFormModalMode('KASIR_CEPAT');
+              }}
+              className="w-full py-3.5 px-4 rounded-xl font-bold text-sm text-white flex items-center justify-center gap-2 cursor-pointer"
+              style={{ backgroundColor: '#27AE60' }}
+            >
+              <Zap className="w-4 h-4" />
+              <span>Kasir Cepat</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setFabChoiceOpen(false);
+                setEditingJadwal(null);
+                setFormModalMode('TAMBAH_AGENDA');
+              }}
+              className="w-full py-3.5 px-4 rounded-xl font-bold text-sm text-white flex items-center justify-center gap-2 cursor-pointer"
+              style={{ backgroundColor: '#2980B9' }}
+            >
+              <CalendarIcon className="w-4 h-4" />
+              <span>Tambah Agenda Booking Baru</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ===================================================================== */}
+      {/* MODAL FORM KASIR CEPAT / TAMBAH JADWAL / EDIT JADWAL                  */}
+      {/* ===================================================================== */}
+      {formModalMode && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 overflow-y-auto">
+          <div className="w-full max-w-xl my-auto">
+            <ScheduleAndCashierForm
+              modeAwal={formModalMode === 'KASIR_CEPAT' ? 'KASIR_CEPAT' : 'AGENDA_LENGKAP'}
+              mode={formModalMode}
+              selectedDate={
+                selectedDateStr ? new Date(`${selectedDateStr}T09:00:00`) : new Date()
+              }
+              defaultDateMillis={
+                selectedDateStr ? new Date(`${selectedDateStr}T09:00:00`).getTime() : Date.now()
+              }
+              paketList={paketList}
+              jenisUsaha={owner.jenisUsaha}
+              editItem={formModalMode === 'EDIT_JADWAL' ? editingJadwal : null}
+              existingJadwal={formModalMode === 'EDIT_JADWAL' ? editingJadwal : null}
+              onSave={handleSaveJadwal}
+              onOpenMasterPaket={() => {
+                setFormModalMode(null);
+                setEditingJadwal(null);
+                setActiveTab('PAKET');
+              }}
+              onCancel={() => {
+                setFormModalMode(null);
+                setEditingJadwal(null);
+              }}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* ===================================================================== */}
+      {/* MODAL ATUR NOMINAL DP (Persis dialog_input_dp.xml)                    */}
+      {/* ===================================================================== */}
+      {dpModalTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4">
+          <div
+            className="w-full max-w-md rounded-2xl p-6 space-y-4"
+            style={{ backgroundColor: '#FFFFFF', color: '#2C3E50' }}
+          >
+            <h3 className="text-lg font-bold">Atur Pembayaran DP</h3>
+            <p className="text-sm font-bold" style={{ color: '#27AE60' }}>
+              Total Tagihan Bersih:{' '}
+              {keRupiah(Math.max(0, dpModalTarget.hargaKotor - dpModalTarget.diskon))}
+            </p>
+            <form onSubmit={handleSaveDpModal} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1">
+                  Masukkan Nominal DP (Rp)
+                </label>
+                <input
+                  type="text"
+                  placeholder="Contoh: 500.000"
+                  value={dpModalInputStr}
+                  onChange={(e) => setDpModalInputStr(formatRibuanInput(e.target.value))}
+                  className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm font-bold text-slate-900"
+                />
+              </div>
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setDpModalTarget(null)}
+                  className="px-4 py-2 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-100 cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-lg bg-[#27AE60] text-xs font-bold text-white cursor-pointer"
+                >
+                  Simpan DP
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ===================================================================== */}
+      {/* MODAL DAFTAR PESANAN DARI WEBSITE KLIEN (flNotifWeb)                  */}
+      {/* ===================================================================== */}
+      {webInboxModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 overflow-y-auto">
+          <div
+            className="w-full max-w-xl rounded-2xl p-6 space-y-4 my-auto border"
+            style={{ backgroundColor: '#1E1E1E', borderColor: '#333333', color: '#FFFFFF' }}
+          >
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <h3 className="text-base font-bold">
+                Pesanan Masuk dari Web ({listPesananWebMenunggu.length})
+              </h3>
+              <button
+                type="button"
+                onClick={() => setWebInboxModalOpen(false)}
+                className="p-1 text-white/70 hover:text-white cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {listPesananWebMenunggu.length === 0 ? (
+              <p className="text-xs text-white/70 py-6 text-center">
+                Belum ada pesanan baru dari website portofolio klien.
+              </p>
+            ) : (
+              <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
+                {listPesananWebMenunggu.map((w) => (
+                  <div
+                    key={w.idJadwal}
+                    className="rounded-xl p-4 border border-white/10 bg-black/30 space-y-2"
+                  >
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <h4 className="font-bold text-sm text-white">{w.namaKlien}</h4>
+                        <p className="text-xs text-[#64B5F6] font-bold">
+                          {w.namaAcara} • {w.paket}
+                        </p>
+                        <p className="text-xs text-white/70">
+                          {formatHariTanggalIndo(w.tanggalMulai)} ({formatJamWIB(w.waktuMulai)}) •{' '}
+                          {w.lokasi}
+                        </p>
+                      </div>
+                      <span className="text-xs font-bold text-[#2ECC71]">
+                        {keRupiah(w.hargaKotor)}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setWebInboxModalOpen(false);
+                          setWebConfirmTarget(w);
+                          setWebConfirmDpStr('');
+                          setWebConfirmExtraName('');
+                          setWebConfirmExtraStr('');
+                        }}
+                        className="flex-1 py-2 rounded-lg bg-[#27AE60] text-xs font-bold text-white cursor-pointer"
+                      >
+                        Terima &amp; Atur DP
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteJadwal(w.idJadwal)}
+                        className="px-3 py-2 rounded-lg bg-[#C0392B] text-xs font-bold text-white cursor-pointer"
+                      >
+                        Tolak / Hapus
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {listPesananWebMenunggu.length > 0 && (
+              <div className="pt-2 border-t border-white/10 flex justify-end items-center">
+                <button
+                  type="button"
+                  onClick={() => setWebInboxModalOpen(false)}
+                  className="px-4 py-1.5 rounded-lg bg-white/10 text-xs font-bold text-white cursor-pointer"
+                >
+                  Tutup
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* MODAL KONFIRMASI PESANAN WEB */}
+      {webConfirmTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4">
+          <div
+            className="w-full max-w-md rounded-2xl p-6 space-y-4"
+            style={{ backgroundColor: '#1E1E1E', color: '#FFFFFF' }}
+          >
+            <h3 className="text-base font-bold">
+              Konfirmasi Jadwal Web: {webConfirmTarget.namaKlien}
+            </h3>
+            <form onSubmit={handleConfirmWebSubmit} className="space-y-3 text-xs">
+              <div>
+                <label className="block text-white/70 mb-1">Nominal DP Masuk (Rp)</label>
+                <input
+                  type="text"
+                  placeholder="0 jika belum transfer"
+                  value={webConfirmDpStr}
+                  onChange={(e) => setWebConfirmDpStr(formatRibuanInput(e.target.value))}
+                  className="w-full rounded-lg bg-black/40 border border-white/15 px-3 py-2 text-white"
+                />
+              </div>
+              <div>
+                <label className="block text-white/70 mb-1">Item Tambahan /Transport (Opsional)</label>
+                <input
+                  type="text"
+                  placeholder="Contoh: Transport Luar Kota"
+                  value={webConfirmExtraName}
+                  onChange={(e) => setWebConfirmExtraName(e.target.value)}
+                  className="w-full rounded-lg bg-black/40 border border-white/15 px-3 py-2 text-white"
+                />
+              </div>
+              <div>
+                <label className="block text-white/70 mb-1">Biaya Tambahan (Rp)</label>
+                <input
+                  type="text"
+                  placeholder="0"
+                  value={webConfirmExtraStr}
+                  onChange={(e) => setWebConfirmExtraStr(formatRibuanInput(e.target.value))}
+                  className="w-full rounded-lg bg-black/40 border border-white/15 px-3 py-2 text-white"
+                />
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setWebConfirmTarget(null)}
+                  className="px-4 py-2 rounded-lg bg-white/10 text-white cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 rounded-lg bg-[#27AE60] font-bold text-white cursor-pointer"
+                >
+                  Konfirmasi &amp; Kirim WA
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ===================================================================== */}
+      {/* MODAL GANTI TEMA & WALLPAPER PERSIS tampilkanDialogPilihTema APK      */}
+      {/* ===================================================================== */}
+      {temaModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4"
+          onClick={() => setTemaModalOpen(false)}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl p-6 space-y-4 border"
+            style={{ backgroundColor: '#1E1E1E', borderColor: '#333333', color: '#FFFFFF' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <h3 className="text-base font-bold">Pengaturan Tampilan &amp; Tema APK</h3>
+              <button
+                type="button"
+                onClick={() => setTemaModalOpen(false)}
+                className="text-white/70 hover:text-white cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-2">
+              <label className="block text-xs font-bold text-white/80">
+                1. Pilih Warna Latar Belakang &amp; Navigasi:
+              </label>
+              <div className="grid grid-cols-1 gap-2">
+                {DAFTAR_WARNA_TEMA_APK.map((w) => (
+                  <button
+                    key={w.kode}
+                    type="button"
+                    onClick={async () => {
+                      setOwner((prev) => ({ ...prev, warnaTema: w.kode }));
+                      if (sessionMode === 'FIREBASE') {
+                        await saveOwnerProfileToFirebase(targetOwnerId, { warnaTema: w.kode });
+                      }
+                    }}
+                    className="flex items-center justify-between px-3.5 py-2.5 rounded-xl border text-xs font-bold cursor-pointer"
+                    style={{
+                      backgroundColor: w.kode,
+                      borderColor: owner.warnaTema === w.kode ? '#F39C12' : 'rgba(255,255,255,0.15)',
+                    }}
+                  >
+                    <span>{w.nama}</span>
+                    {owner.warnaTema === w.kode && (
+                      <span className="text-[#F39C12] font-extrabold">AKTIF</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-2 pt-2 border-t border-white/10">
+              <label className="block text-xs font-bold text-white/80">
+                2. Pilih Gaya Kartu Kaca (Glassmorphism):
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setOwner((prev) => ({ ...prev, isKacaGelap: true }))}
+                  className={`py-2.5 rounded-xl text-xs font-bold border cursor-pointer ${
+                    isKacaGelap
+                      ? 'bg-[#2980B9] border-white text-white'
+                      : 'bg-black/40 border-white/15 text-white/70'
+                  }`}
+                >
+                  Kaca Gelap (Elegan)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setOwner((prev) => ({ ...prev, isKacaGelap: false }))}
+                  className={`py-2.5 rounded-xl text-xs font-bold border cursor-pointer ${
+                    !isKacaGelap
+                      ? 'bg-[#2980B9] border-white text-white'
+                      : 'bg-white text-slate-900 border-white/15'
+                  }`}
+                >
+                  Kaca Terang (Bersih)
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL STRUK / NOTA DIGITAL (dialog_struk.xml) */}
+      {strukModalJadwal && (
+        <StrukModal
+          jadwal={strukModalJadwal}
+          owner={owner}
+          rekening={rekening}
+          namaAdminAktif={activeUserName || owner.namaOwner || owner.namaBrand}
+          onClose={() => setStrukModalJadwal(null)}
+        />
+      )}
+
+      {/* MODAL TANDA TANGAN DIGITAL & LOGO STUDIO */}
+      {signatureModalOpen && (
+        <SignatureAndLogoModal
+          owner={owner}
+          onSave={async (updates) => {
+            setOwner((prev) => ({ ...prev, ...updates }));
+            setSignatureModalOpen(false);
+            if (sessionMode === 'FIREBASE') {
+              await saveOwnerProfileToFirebase(targetOwnerId, updates);
+            }
+          }}
+          onClose={() => setSignatureModalOpen(false)}
+        />
+      )}
+
+      {/* Floating Toast Notification */}
+      {toastMessage && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-2xl shadow-2xl bg-slate-900 text-white font-bold text-xs sm:text-sm border border-white/20 flex items-center gap-2 animate-bounce">
+          <span>{toastMessage}</span>
+        </div>
+      )}
+      </div>
+    </div>
+  );
+}

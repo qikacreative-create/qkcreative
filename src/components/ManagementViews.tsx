@@ -1,0 +1,2709 @@
+import React, { useState } from 'react';
+import {
+  Archive,
+  ArrowDown,
+  ArrowUp,
+  Building2,
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  Copy,
+  CreditCard,
+  Edit3,
+  ExternalLink,
+  FolderArchive,
+  Globe,
+  MessageSquare,
+  Palette,
+  PenTool,
+  Plus,
+  RotateCcw,
+  Search,
+  Shield,
+  Trash2,
+  UserPlus,
+  Users,
+} from 'lucide-react';
+import {
+  AnggotaTimModel,
+  DAFTAR_JENIS_USAHA,
+  JadwalFotografi,
+  KAFELA_THEME_COLORS,
+  OwnerProfile,
+  PaketLanggananTier,
+  PaketLayanan,
+  RekeningModel,
+  UserRoleType,
+} from '../types/kafela';
+import {
+  bersihkanTitik,
+  formatRibuanInput,
+  formatTanggalIndo,
+  keRupiah,
+} from '../utils/formatters';
+import { ProfessionPresetKey } from '../services/demoDataSeeder';
+
+/* ============================================================================
+ * 1. LAPORAN KEUANGAN & PIUTANG VIEW (Persis LaporanActivity.kt — 0 Read!)
+ * ========================================================================== */
+export const LaporanKeuanganView: React.FC<{
+  jadwalAktif: JadwalFotografi[];
+  onSelectJadwal: (j: JadwalFotografi) => void;
+  userRole?: UserRoleType;
+}> = ({ jadwalAktif, onSelectJadwal, userRole }) => {
+  const isAdmin = userRole === 'admin';
+  const [subTab, setSubTab] = useState<'KEUANGAN' | 'PIUTANG'>('KEUANGAN');
+  const [bulanCursor, setBulanCursor] = useState<Date>(() => new Date());
+  const [hariFilter, setHariFilter] = useState<number>(0); // 0 = Semua Hari
+
+  const targetMonth = bulanCursor.getMonth();
+  const targetYear = bulanCursor.getFullYear();
+  const maxDaysInMonth = new Date(targetYear, targetMonth + 1, 0).getDate();
+
+  const jadwalBulanIni = jadwalAktif
+    .filter((j) => {
+      if ((j.status || '').toLowerCase() === 'dibatalkan') return false;
+      const ms = j.tanggalMulai || j.waktuMulai;
+      if (!ms) return false;
+      const d = new Date(ms);
+      return d.getMonth() === targetMonth && d.getFullYear() === targetYear;
+    })
+    .sort((a, b) => a.waktuMulai - b.waktuMulai);
+
+  let totalPemasukanBulanIni = 0;
+  let totalOmzetBulanIni = 0;
+  let totalPemasukanFilter = 0;
+
+  const listTransaksiFilter = jadwalBulanIni.filter((j) => {
+    const omzetAcara = Math.max(0, j.hargaKotor - j.diskon);
+    totalOmzetBulanIni += omzetAcara;
+
+    const statusKecil = j.status.toLowerCase();
+    const uangMasuk =
+      statusKecil === 'lunas' ? omzetAcara : statusKecil === 'dp' ? j.dpDibayar : 0;
+    totalPemasukanBulanIni += uangMasuk;
+
+    const d = new Date(j.tanggalMulai || j.waktuMulai);
+    const cocokHari = hariFilter === 0 || d.getDate() === hariFilter;
+    if (cocokHari) {
+      totalPemasukanFilter += uangMasuk;
+    }
+    return cocokHari;
+  });
+
+  const listPiutang = jadwalAktif
+    .filter((j) => {
+      const st = j.status.toLowerCase();
+      if (st === 'lunas' || st === 'dibatalkan') return false;
+      const sisa = j.hargaKotor - j.diskon - j.dpDibayar;
+      return sisa > 0;
+    })
+    .sort((a, b) => a.waktuMulai - b.waktuMulai);
+
+  const namaBulanTahun = bulanCursor.toLocaleDateString('id-ID', {
+    month: 'long',
+    year: 'numeric',
+  });
+
+  return (
+    <div className="space-y-5">
+      {/* Header & Switch Keuangan vs Piutang */}
+      <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-900 border border-slate-800 rounded-xl p-4">
+        <div>
+          <h2 className="text-base font-bold text-white">
+            {subTab === 'KEUANGAN'
+              ? 'Laporan Keuangan & Omzet Studio'
+              : 'Daftar Klien Belum Lunas (Piutang)'}
+          </h2>
+          <p className="text-xs text-slate-400">
+            Dihitung langsung dari memori lokal PC (0 Kuota Read Firebase)
+          </p>
+        </div>
+
+        <div className="flex items-center gap-1 p-1 rounded-lg bg-slate-950 border border-slate-800">
+          <button
+            type="button"
+            onClick={() => setSubTab('KEUANGAN')}
+            className={`px-3.5 py-1.5 rounded-md text-xs font-semibold transition-colors cursor-pointer ${
+              subTab === 'KEUANGAN'
+                ? 'bg-sky-600 text-white'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            Laporan Keuangan
+          </button>
+          <button
+            type="button"
+            onClick={() => setSubTab('PIUTANG')}
+            className={`px-3.5 py-1.5 rounded-md text-xs font-semibold transition-colors cursor-pointer ${
+              subTab === 'PIUTANG'
+                ? 'bg-amber-600 text-white'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            Daftar Piutang ({listPiutang.length})
+          </button>
+        </div>
+      </div>
+
+      {subTab === 'KEUANGAN' ? (
+        <>
+          {/* Navigasi Bulan & Ringkasan Kas / Omzet */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="rounded-xl bg-slate-900 border border-slate-800 p-4 flex flex-col justify-between">
+              <span className="text-xs text-slate-400 font-medium">Periode Bulan Laporan</span>
+              <div className="flex items-center justify-between mt-2">
+                <button
+                  type="button"
+                  disabled={isAdmin}
+                  onClick={() => {
+                    if (isAdmin) return;
+                    setBulanCursor(new Date(targetYear, targetMonth - 1, 1));
+                    setHariFilter(0);
+                  }}
+                  className={`p-2 rounded-lg bg-slate-950 border border-slate-800 text-slate-200 ${
+                    isAdmin ? 'opacity-40 cursor-not-allowed' : 'hover:bg-slate-800 cursor-pointer'
+                  }`}
+                  title={isAdmin ? 'Admin hanya dapat melihat laporan bulan berjalan' : 'Bulan sebelumnya'}
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <div className="text-center">
+                  <span className="text-sm font-extrabold text-white">{namaBulanTahun}</span>
+                  {isAdmin && (
+                    <p className="text-[10px] text-amber-400 font-medium">Bulan Berjalan</p>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  disabled={isAdmin}
+                  onClick={() => {
+                    if (isAdmin) return;
+                    setBulanCursor(new Date(targetYear, targetMonth + 1, 1));
+                    setHariFilter(0);
+                  }}
+                  className={`p-2 rounded-lg bg-slate-950 border border-slate-800 text-slate-200 ${
+                    isAdmin ? 'opacity-40 cursor-not-allowed' : 'hover:bg-slate-800 cursor-pointer'
+                  }`}
+                  title={isAdmin ? 'Admin hanya dapat melihat laporan bulan berjalan' : 'Bulan berikutnya'}
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            <div className="rounded-xl bg-slate-900 border border-slate-800 p-4">
+              <span className="text-xs text-slate-400">Total Pemasukan Kas (Riil Masuk)</span>
+              <div className="text-xl font-extrabold font-mono text-emerald-400 mt-1.5">
+                {keRupiah(totalPemasukanBulanIni)}
+              </div>
+              <span className="text-[11px] text-slate-500">
+                Akumulasi pembayaran Lunas & DP masuk
+              </span>
+            </div>
+
+            <div className="rounded-xl bg-slate-900 border border-slate-800 p-4">
+              <span className="text-xs text-slate-400">Total Omzet Bulan Ini</span>
+              <div className="text-xl font-extrabold font-mono text-sky-400 mt-1.5">
+                {keRupiah(totalOmzetBulanIni)}
+              </div>
+              <span className="text-[11px] text-slate-500">
+                Total nilai kontrak paket setelah diskon
+              </span>
+            </div>
+          </div>
+
+          {/* Filter Hari & Tabel Rincian Uang Masuk */}
+          <div className="rounded-xl bg-slate-900 border border-slate-800 overflow-hidden">
+            <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-3.5 border-b border-slate-800 bg-slate-950">
+              <div className="flex items-center gap-3">
+                <span className="text-xs font-bold text-white">Rincian Uang Masuk:</span>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setHariFilter((prev) => (prev <= 0 ? maxDaysInMonth : prev - 1))
+                    }
+                    className="px-2 py-1 rounded bg-slate-900 border border-slate-700 text-xs text-slate-300 hover:text-white cursor-pointer"
+                  >
+                    &lt;&lt;
+                  </button>
+                  <span className="px-3 py-1 rounded bg-slate-900 border border-slate-800 text-xs font-bold text-sky-300 min-w-[110px] text-center">
+                    {hariFilter === 0 ? 'Semua Hari' : `Tanggal ${hariFilter}`}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setHariFilter((prev) => (prev >= maxDaysInMonth ? 0 : prev + 1))
+                    }
+                    className="px-2 py-1 rounded bg-slate-900 border border-slate-700 text-xs text-slate-300 hover:text-white cursor-pointer"
+                  >
+                    &gt;&gt;
+                  </button>
+                  {hariFilter !== 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setHariFilter(0)}
+                      className="text-[11px] text-slate-400 hover:text-white ml-1 cursor-pointer"
+                    >
+                      Reset
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div className="text-xs font-mono font-bold text-emerald-400">
+                Total Terfilter: {keRupiah(totalPemasukanFilter)}
+              </div>
+            </div>
+
+            {listTransaksiFilter.length === 0 ? (
+              <div className="p-8 text-center text-xs text-slate-500">
+                Tidak ada transaksi pada periode filter ini.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="border-b border-slate-800 text-slate-400 bg-slate-950/50">
+                      <th className="py-3 px-4 font-semibold">Tanggal Acara</th>
+                      <th className="py-3 px-4 font-semibold">Klien & Acara</th>
+                      <th className="py-3 px-4 font-semibold">Paket</th>
+                      <th className="py-3 px-4 font-semibold text-right">Uang Masuk</th>
+                      <th className="py-3 px-4 font-semibold text-right">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/70">
+                    {listTransaksiFilter.map((item) => {
+                      const st = item.status.toLowerCase();
+                      const omzet = Math.max(0, item.hargaKotor - item.diskon);
+                      const masuk = st === 'lunas' ? omzet : st === 'dp' ? item.dpDibayar : 0;
+                      return (
+                        <tr
+                          key={item.idJadwal}
+                          onClick={() => onSelectJadwal(item)}
+                          className="hover:bg-slate-800/60 cursor-pointer transition-colors"
+                        >
+                          <td className="py-3 px-4 font-mono text-slate-300">
+                            {formatTanggalIndo(item.waktuMulai, true)}
+                          </td>
+                          <td className="py-3 px-4">
+                            <div className="font-bold text-white">{item.namaKlien}</div>
+                            <div className="text-[11px] text-slate-400">{item.namaAcara}</div>
+                          </td>
+                          <td className="py-3 px-4 text-slate-300">{item.paket}</td>
+                          <td className="py-3 px-4 font-mono font-bold text-emerald-400 text-right">
+                            {keRupiah(masuk)}
+                          </td>
+                          <td className="py-3 px-4 text-right font-bold">
+                            <span
+                              className={
+                                st === 'lunas'
+                                  ? 'text-emerald-400'
+                                  : st === 'dp'
+                                  ? 'text-amber-400'
+                                  : 'text-slate-400'
+                              }
+                            >
+                              {item.status.toUpperCase()}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </>
+      ) : (
+        /* TABEL PIUTANG (KLIEN BELUM LUNAS) */
+        <div className="rounded-xl bg-slate-900 border border-slate-800 overflow-hidden">
+          <div className="px-5 py-3.5 border-b border-slate-800 bg-slate-950 flex items-center justify-between">
+            <span className="text-xs font-bold text-white">
+              Daftar Klien Belum Lunas (Klik baris untuk Lunasi / Cetak Struk)
+            </span>
+            <span className="text-xs font-mono font-bold text-rose-400">
+              Total Piutang:{' '}
+              {keRupiah(
+                listPiutang.reduce(
+                  (acc, cur) => acc + Math.max(0, cur.hargaKotor - cur.diskon - cur.dpDibayar),
+                  0
+                )
+              )}
+            </span>
+          </div>
+
+          {listPiutang.length === 0 ? (
+            <div className="p-8 text-center text-xs text-slate-500">
+              Semua klien sudah lunas! Tidak ada tagihan tertunggak.
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr className="border-b border-slate-800 text-slate-400 bg-slate-950/50">
+                    <th className="py-3 px-4 font-semibold">Tanggal Acara</th>
+                    <th className="py-3 px-4 font-semibold">Klien & Acara</th>
+                    <th className="py-3 px-4 font-semibold text-right">Sudah DP</th>
+                    <th className="py-3 px-4 font-semibold text-right">Sisa Tagihan</th>
+                    <th className="py-3 px-4 font-semibold text-right">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/70">
+                  {listPiutang.map((item) => {
+                    const sisa = Math.max(0, item.hargaKotor - item.diskon - item.dpDibayar);
+                    return (
+                      <tr
+                        key={item.idJadwal}
+                        onClick={() => onSelectJadwal(item)}
+                        className="hover:bg-slate-800/60 cursor-pointer transition-colors"
+                      >
+                        <td className="py-3 px-4 font-mono text-slate-300">
+                          {formatTanggalIndo(item.waktuMulai, true)}
+                        </td>
+                        <td className="py-3 px-4">
+                          <div className="font-bold text-white">{item.namaKlien}</div>
+                          <div className="text-[11px] text-slate-400">{item.namaAcara}</div>
+                        </td>
+                        <td className="py-3 px-4 font-mono text-slate-300 text-right">
+                          {keRupiah(item.dpDibayar)}
+                        </td>
+                        <td className="py-3 px-4 font-mono font-bold text-rose-400 text-right">
+                          {keRupiah(sisa)}
+                        </td>
+                        <td className="py-3 px-4 text-right font-bold text-amber-400">
+                          {item.status.toUpperCase()}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+/* ============================================================================
+ * 2. PENCARIAN GUDANG ARSIP & MESIN KOMPRESI 2 BULAN (Persis ArsipActivity.kt)
+ * ========================================================================== */
+export const ArsipPencarianView: React.FC<{
+  jadwalAktif: JadwalFotografi[];
+  jadwalArsip: JadwalFotografi[];
+  onSelectAktif: (j: JadwalFotografi) => void;
+  onRestoreFromArsip: (j: JadwalFotografi) => void;
+  onRunCompression60Days: () => number;
+}> = ({
+  jadwalAktif,
+  jadwalArsip,
+  onSelectAktif,
+  onRestoreFromArsip,
+  onRunCompression60Days,
+}) => {
+  const [query, setQuery] = useState('');
+  const [compressToast, setCompressToast] = useState<string | null>(null);
+
+  const gabungan = [...jadwalAktif, ...jadwalArsip].sort(
+    (a, b) => b.waktuMulai - a.waktuMulai
+  );
+
+  const hasilFilter = query.trim()
+    ? gabungan.filter(
+        (j) =>
+          j.namaKlien.toLowerCase().includes(query.toLowerCase()) ||
+          j.namaAcara.toLowerCase().includes(query.toLowerCase()) ||
+          j.paket.toLowerCase().includes(query.toLowerCase())
+      )
+    : jadwalArsip;
+
+  return (
+    <div className="space-y-5">
+      <div className="rounded-xl bg-slate-900 border border-slate-800 p-5 space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-base font-bold text-white">
+              Cari Data & Gudang Arsip Kompresi (Smart Archive)
+            </h2>
+            <p className="text-xs text-slate-400">
+              Jadwal berusia &gt; 60 hari (2 bulan) dikompresi ke dalam dokumen tunggal{' '}
+              <code>arsip_kompresi</code> agar kuota Read kalender utama tetap super hemat.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              const count = onRunCompression60Days();
+              setCompressToast(
+                count > 0
+                  ? `${count} jadwal lama (> 60 hari) berhasil dikompresi ke gudang arsip!`
+                  : 'Seluruh jadwal aktif masih berusia di bawah 60 hari (Sudah Optimal).'
+              );
+              setTimeout(() => setCompressToast(null), 4000);
+            }}
+            className="flex items-center gap-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 px-3.5 py-2 text-xs font-bold text-white cursor-pointer transition-colors"
+          >
+            <FolderArchive className="w-4 h-4" />
+            <span>Kompresi Jadwal &gt; 60 Hari</span>
+          </button>
+        </div>
+
+        {compressToast && (
+          <div className="rounded-lg bg-emerald-950/70 border border-emerald-500/40 px-3.5 py-2.5 text-xs text-emerald-300 font-medium">
+            {compressToast}
+          </div>
+        )}
+
+        <div className="relative">
+          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+          <input
+            type="text"
+            placeholder="Ketik nama klien, acara, atau paket di seluruh data aktif & arsip..."
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            className="w-full rounded-xl bg-slate-950 border border-slate-700 pl-10 pr-4 py-2.5 text-xs text-white focus:border-sky-500 focus:outline-none"
+          />
+        </div>
+      </div>
+
+      <div className="rounded-xl bg-slate-900 border border-slate-800 overflow-hidden">
+        <div className="px-5 py-3 border-b border-slate-800 bg-slate-950 flex items-center justify-between text-xs">
+          <span className="font-bold text-slate-200">
+            {query.trim()
+              ? `Hasil Pencarian "${query}" (${hasilFilter.length} ditemukan)`
+              : `Isi Gudang Arsip Terkompresi (${jadwalArsip.length} dokumen)`}
+          </span>
+          <span className="text-slate-400">Klik Tarik & Buka untuk mengembalikan ke jadwal aktif</span>
+        </div>
+
+        {hasilFilter.length === 0 ? (
+          <div className="p-8 text-center text-xs text-slate-500">
+            Data tidak ditemukan di gudang arsip maupun jadwal aktif.
+          </div>
+        ) : (
+          <div className="divide-y divide-slate-800">
+            {hasilFilter.map((item) => (
+              <div
+                key={item.idJadwal}
+                className="p-4 flex flex-wrap items-center justify-between gap-4 hover:bg-slate-800/40 transition-colors"
+              >
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className="font-bold text-white text-sm">{item.namaKlien}</span>
+                    <span className="text-slate-500">·</span>
+                    <span className="text-slate-300">{item.namaAcara}</span>
+                    <span className="text-slate-500">·</span>
+                    <span
+                      className={
+                        item.isFromArchive
+                          ? 'text-indigo-400 font-semibold'
+                          : 'text-emerald-400 font-semibold'
+                      }
+                    >
+                      {item.isFromArchive
+                        ? `Arsip (${item.archiveDocId || 'arsip_kompresi'})`
+                        : 'Jadwal Aktif'}
+                    </span>
+                  </div>
+                  <div className="text-xs text-slate-400 font-mono">
+                    {formatTanggalIndo(item.waktuMulai)} · Paket: {item.paket} · Nilai:{' '}
+                    {keRupiah(item.hargaKotor - item.diskon)} ({item.status})
+                  </div>
+                </div>
+
+                <div>
+                  {item.isFromArchive ? (
+                    <button
+                      type="button"
+                      onClick={() => onRestoreFromArsip(item)}
+                      className="flex items-center gap-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 px-3 py-1.5 text-xs font-bold text-white cursor-pointer"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      <span>Tarik & Buka ke Aktif</span>
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => onSelectAktif(item)}
+                      className="rounded-lg border border-slate-700 hover:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-200 cursor-pointer"
+                    >
+                      Lihat Detail
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+/* ============================================================================
+ * 3. MASTER PAKET LAYANAN VIEW (Persis MasterPaketActivity.kt)
+ * ========================================================================== */
+export const MasterPaketView: React.FC<{
+  paketList: PaketLayanan[];
+  onSavePaket: (p: PaketLayanan) => void;
+  onDeletePaket: (id: string) => void;
+  onMoveOrder: (index: number, direction: -1 | 1) => void;
+}> = ({ paketList, onSavePaket, onDeletePaket, onMoveOrder }) => {
+  const [editingPaket, setEditingPaket] = useState<PaketLayanan | null>(null);
+  const [namaPaket, setNamaPaket] = useState('');
+  const [hargaStr, setHargaStr] = useState('');
+  const [deskripsi, setDeskripsi] = useState('');
+
+  const startEdit = (p: PaketLayanan) => {
+    setEditingPaket(p);
+    setNamaPaket(p.namaPaket);
+    setHargaStr(formatRibuanInput(String(p.hargaPaket)));
+    setDeskripsi(p.deskripsiPaket);
+  };
+
+  const resetForm = () => {
+    setEditingPaket(null);
+    setNamaPaket('');
+    setHargaStr('');
+    setDeskripsi('');
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!namaPaket.trim()) return;
+    onSavePaket({
+      idPaket: editingPaket?.idPaket || `pkt-${Date.now()}`,
+      namaPaket: namaPaket.trim(),
+      hargaPaket: bersihkanTitik(hargaStr),
+      deskripsiPaket: deskripsi.trim(),
+      urutan: editingPaket ? editingPaket.urutan : paketList.length,
+    });
+    resetForm();
+  };
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+      {/* Daftar Paket (7 Kolom) */}
+      <div className="lg:col-span-7 rounded-xl bg-slate-900 border border-slate-800 overflow-hidden">
+        <div className="px-5 py-4 border-b border-slate-800 bg-slate-950 flex items-center justify-between">
+          <div>
+            <h2 className="text-base font-bold text-white">Daftar Paket Layanan Studio</h2>
+            <p className="text-xs text-slate-400">
+              Urutan paket di sini otomatis tampil di Kasir PC, Aplikasi HP, dan Form Website
+            </p>
+          </div>
+          <span className="text-xs font-mono text-sky-400">{paketList.length} Paket</span>
+        </div>
+
+        <div className="divide-y divide-slate-800">
+          {paketList.map((item, idx) => (
+            <div
+              key={item.idPaket}
+              className="p-4 flex items-start justify-between gap-4 hover:bg-slate-800/40"
+            >
+              <div className="flex items-start gap-3">
+                <div className="flex flex-col gap-1 pt-0.5">
+                  <button
+                    type="button"
+                    disabled={idx === 0}
+                    onClick={() => onMoveOrder(idx, -1)}
+                    className="p-1 rounded bg-slate-950 border border-slate-800 text-slate-400 hover:text-white disabled:opacity-30 cursor-pointer"
+                    title="Naikkan urutan"
+                  >
+                    <ArrowUp className="w-3 h-3" />
+                  </button>
+                  <button
+                    type="button"
+                    disabled={idx === paketList.length - 1}
+                    onClick={() => onMoveOrder(idx, 1)}
+                    className="p-1 rounded bg-slate-950 border border-slate-800 text-slate-400 hover:text-white disabled:opacity-30 cursor-pointer"
+                    title="Turunkan urutan"
+                  >
+                    <ArrowDown className="w-3 h-3" />
+                  </button>
+                </div>
+                <div>
+                  <div className="text-sm font-bold text-white">{item.namaPaket}</div>
+                  <div className="text-xs font-mono font-bold text-emerald-400 mt-0.5">
+                    {keRupiah(item.hargaPaket)}
+                  </div>
+                  {item.deskripsiPaket && (
+                    <p className="text-xs text-slate-400 mt-1">{item.deskripsiPaket}</p>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => startEdit(item)}
+                  className="px-3 py-1.5 rounded-lg border border-sky-500/50 text-sky-300 hover:bg-sky-500/10 text-xs font-semibold cursor-pointer"
+                >
+                  Ubah
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onDeletePaket(item.idPaket)}
+                  className="p-1.5 rounded-lg border border-rose-500/40 text-rose-400 hover:bg-rose-500/10 cursor-pointer"
+                  title="Hapus Paket"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Form Tambah / Edit Paket (5 Kolom) */}
+      <div className="lg:col-span-5">
+        <form
+          onSubmit={handleSubmit}
+          className="rounded-xl bg-slate-900 border border-slate-800 p-5 space-y-4 text-xs"
+        >
+          <h3 className="text-sm font-bold text-white border-b border-slate-800 pb-3">
+            {editingPaket ? 'Edit Paket Layanan' : 'Tambah Paket Layanan Baru'}
+          </h3>
+
+          <div>
+            <label className="block text-slate-400 font-medium mb-1">
+              Nama Paket (Cth: Self Photo / Prewedding Gold) *
+            </label>
+            <input
+              type="text"
+              required
+              value={namaPaket}
+              onChange={(e) => setNamaPaket(e.target.value)}
+              className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-white"
+            />
+          </div>
+
+          <div>
+            <label className="block text-slate-400 font-medium mb-1">Harga Dasar (Rp) *</label>
+            <input
+              type="text"
+              required
+              placeholder="350.000"
+              value={hargaStr}
+              onChange={(e) => setHargaStr(formatRibuanInput(e.target.value))}
+              className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-white font-mono font-bold"
+            />
+          </div>
+
+          <div>
+            <label className="block text-slate-400 font-medium mb-1">
+              Catatan / Deskripsi Paket (Opsional)
+            </label>
+            <textarea
+              rows={3}
+              placeholder="Rincian fasilitas paket yang didapat klien..."
+              value={deskripsi}
+              onChange={(e) => setDeskripsi(e.target.value)}
+              className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-white"
+            />
+          </div>
+
+          <div className="flex gap-2 pt-2">
+            {editingPaket && (
+              <button
+                type="button"
+                onClick={resetForm}
+                className="flex-1 py-2.5 rounded-lg border border-slate-700 text-slate-300 font-semibold cursor-pointer"
+              >
+                Batal
+              </button>
+            )}
+            <button
+              type="submit"
+              className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              <span>{editingPaket ? 'Simpan Perubahan' : 'Simpan Paket Baru'}</span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+/* ============================================================================
+ * 4. KELOLA TIM & KRU STUDIO VIEW (Persis KelolaTimActivity.kt)
+ * ========================================================================== */
+export const KelolaTimView: React.FC<{
+  timList: AnggotaTimModel[];
+  namaBrand: string;
+  ownerUid: string;
+  onAddTim: (anggota: AnggotaTimModel) => void;
+  onRemoveTim: (uid: string) => void;
+}> = ({ timList, namaBrand, ownerUid, onAddTim, onRemoveTim }) => {
+  const [nama, setNama] = useState('');
+  const [noWa, setNoWa] = useState('');
+  const [password, setPassword] = useState('');
+  const [posisi, setPosisi] = useState('');
+  const [role, setRole] = useState<'anggota' | 'admin'>('anggota');
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!nama.trim() || !noWa.trim()) return;
+    let waBersih = noWa.replace(/[^0-9]/g, '');
+    if (waBersih.startsWith('62')) waBersih = '0' + waBersih.substring(2);
+
+    onAddTim({
+      uid: `tim-${Date.now()}`,
+      nama: nama.trim(),
+      noWhatsApp: waBersih,
+      password: password.trim() || '123456',
+      role,
+      posisi: posisi.trim() || (role === 'admin' ? 'Admin Operasional' : 'Kru Studio'),
+      namaBrand,
+      ownerParentId: ownerUid,
+      tanggalDibuat: Date.now(),
+    });
+    setNama('');
+    setNoWa('');
+    setPassword('');
+    setPosisi('');
+  };
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+      <div className="lg:col-span-7 rounded-xl bg-slate-900 border border-slate-800 overflow-hidden">
+        <div className="px-5 py-4 border-b border-slate-800 bg-slate-950 flex items-center justify-between">
+          <div>
+            <h2 className="text-base font-bold text-white">
+              Daftar Staf & Kru Studio ({timList.length} Orang)
+            </h2>
+            <p className="text-xs text-slate-400">
+              Admin bisa kelola jadwal & kasir. Anggota kru hanya bisa melihat kalender & lokasi tanpa
+              melihat harga.
+            </p>
+          </div>
+          <Users className="w-5 h-5 text-sky-400" />
+        </div>
+
+        {timList.length === 0 ? (
+          <div className="p-8 text-center text-xs text-slate-500">
+            Belum ada anggota tim yang didaftarkan.
+          </div>
+        ) : (
+          <div className="divide-y divide-slate-800">
+            {timList.map((item) => (
+              <div
+                key={item.uid}
+                className="p-4 flex items-center justify-between gap-4 hover:bg-slate-800/40"
+              >
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className="text-sm font-bold text-white">{item.nama}</span>
+                    <span className="text-slate-500">·</span>
+                    <span
+                      className={
+                        item.role === 'admin'
+                          ? 'text-purple-400 font-bold'
+                          : 'text-sky-400 font-bold'
+                      }
+                    >
+                      {item.role === 'admin' ? 'ADMIN OPERASIONAL' : 'ANGGOTA / KRU'}
+                    </span>
+                  </div>
+                  <div className="text-xs text-emerald-400 italic">Posisi: {item.posisi}</div>
+                  <div className="text-xs text-slate-400 font-mono">WA Login: {item.noWhatsApp}</div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => onRemoveTim(item.uid)}
+                  className="px-3 py-1.5 rounded-lg border border-rose-500/40 text-rose-400 hover:bg-rose-500/10 text-xs font-semibold cursor-pointer"
+                >
+                  Hapus Akses
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="lg:col-span-5">
+        <form
+          onSubmit={handleSubmit}
+          className="rounded-xl bg-slate-900 border border-slate-800 p-5 space-y-3.5 text-xs"
+        >
+          <h3 className="text-sm font-bold text-white border-b border-slate-800 pb-3">
+            Tambah Anggota Tim / Kasir Baru
+          </h3>
+
+          <div>
+            <label className="block text-slate-400 mb-1">Nama Lengkap / Panggilan *</label>
+            <input
+              type="text"
+              required
+              placeholder="Cth: Nadia"
+              value={nama}
+              onChange={(e) => setNama(e.target.value)}
+              className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-white"
+            />
+          </div>
+
+          <div>
+            <label className="block text-slate-400 mb-1">Nomor WhatsApp (Untuk Login) *</label>
+            <input
+              type="tel"
+              required
+              placeholder="0812xxxx"
+              value={noWa}
+              onChange={(e) => setNoWa(e.target.value)}
+              className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-white font-mono"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-2.5">
+            <div>
+              <label className="block text-slate-400 mb-1">Kata Sandi (Min 6)</label>
+              <input
+                type="password"
+                placeholder="******"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-white"
+              />
+            </div>
+            <div>
+              <label className="block text-slate-400 mb-1">Posisi / Tugas</label>
+              <input
+                type="text"
+                placeholder="Kasir / Fotografer 1"
+                value={posisi}
+                onChange={(e) => setPosisi(e.target.value)}
+                className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-white"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2 pt-1">
+            <label className="block text-slate-300 font-bold">Pilih Hak Akses Pengguna:</label>
+            <label className="flex items-start gap-2.5 p-2.5 rounded-lg bg-slate-950 border border-slate-800 cursor-pointer">
+              <input
+                type="radio"
+                checked={role === 'anggota'}
+                onChange={() => setRole('anggota')}
+                className="mt-0.5 accent-sky-500"
+              />
+              <div>
+                <div className="font-bold text-white">Anggota / Kru (Lihat Kalender Saja)</div>
+                <p className="text-[11px] text-slate-400">
+                  Hanya bisa melihat jadwal, jam &amp; lokasi. Tidak bisa tambah jadwal, melihat
+                  harga paket, maupun masa aktif langganan.
+                </p>
+              </div>
+            </label>
+
+            <label className="flex items-start gap-2.5 p-2.5 rounded-lg bg-slate-950 border border-slate-800 cursor-pointer">
+              <input
+                type="radio"
+                checked={role === 'admin'}
+                onChange={() => setRole('admin')}
+                className="mt-0.5 accent-purple-500"
+              />
+              <div>
+                <div className="font-bold text-white">Admin Operasional / Kasir (Bisa Kelola)</div>
+                <p className="text-[11px] text-slate-400">
+                  Bisa menambah jadwal, kasir cepat, konfirmasi pesanan web, dan cetak struk.
+                </p>
+              </div>
+            </label>
+          </div>
+
+          <button
+            type="submit"
+            className="w-full flex items-center justify-center gap-2 rounded-lg bg-sky-600 hover:bg-sky-500 py-2.5 text-xs font-bold text-white cursor-pointer"
+          >
+            <UserPlus className="w-4 h-4" />
+            <span>Daftarkan Anggota Tim</span>
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+/* ============================================================================
+ * 5. PENGATURAN STUDIO TERPISAH (PROFIL, WEBSITE, REKENING, TEMPLATE WA, PAKET)
+ * ========================================================================== */
+export type PengaturanSubTab = 'PROFIL' | 'WEB' | 'REKENING' | 'WA' | 'PAKET';
+
+export const PengaturanStudioView: React.FC<{
+  owner: OwnerProfile;
+  rekening: RekeningModel;
+  initialSubTab?: PengaturanSubTab;
+  onUpdateOwner: (updates: Partial<OwnerProfile>) => Promise<void> | void;
+  onUpdateRekening: (rek: RekeningModel) => Promise<void> | void;
+  onOpenSignatureModal: () => void;
+  onSwitchDemoProfession?: (preset: ProfessionPresetKey) => void;
+}> = ({
+  owner,
+  rekening,
+  initialSubTab = 'PROFIL',
+  onUpdateOwner,
+  onUpdateRekening,
+  onOpenSignatureModal,
+}) => {
+  const [subTab, setSubTab] = useState<PengaturanSubTab>(initialSubTab);
+
+  React.useEffect(() => {
+    setSubTab(initialSubTab);
+  }, [initialSubTab]);
+
+  const [namaBrand, setNamaBrand] = useState(owner.namaBrand);
+  const [namaOwner, setNamaOwner] = useState(owner.namaOwner);
+  const [jenisUsaha, setJenisUsaha] = useState(owner.jenisUsaha);
+  const [noWa, setNoWa] = useState(owner.noWhatsApp);
+
+  const [usernameWeb, setUsernameWeb] = useState(owner.username || owner.uid || 'kafelastudio');
+  const [taglineWeb, setTaglineWeb] = useState(owner.taglineWeb);
+  const [bioWeb, setBioWeb] = useState(owner.bioWeb || '');
+  const [linkIg, setLinkIg] = useState(owner.linkIg);
+  const [linkTiktok, setLinkTiktok] = useState(owner.linkTiktok);
+  const [lokasi1, setLokasi1] = useState(owner.lokasi1);
+  const [lokasi2, setLokasi2] = useState(owner.lokasi2 || '');
+  const [lokasi3, setLokasi3] = useState(owner.lokasi3 || '');
+  const [portoPhotos, setPortoPhotos] = useState<string[]>(() =>
+    Array.from({ length: 8 }, (_, i) => owner.portofolioWeb?.[i] || '')
+  );
+  const [portoCaptions, setPortoCaptions] = useState<string[]>(() =>
+    Array.from({ length: 8 }, (_, i) => owner.portofolioCaptions?.[i] || '')
+  );
+  const [logoWeb, setLogoWeb] = useState(owner.logoBrandUrl || '/logo-kafela.svg');
+  const [temaWeb, setTemaWeb] = useState<'MODERN_STUDIO' | 'LUXURY_GOLD' | 'CLEAN_MINIMALIST' | 'VERTICAL_LANDING'>(
+    owner.temaWeb || 'MODERN_STUDIO'
+  );
+  const [layoutWeb, setLayoutWeb] = useState<'HORIZONTAL_BOOK' | 'VERTICAL_LANDING'>(
+    owner.layoutWeb || 'HORIZONTAL_BOOK'
+  );
+  const [pesanPenutupWeb, setPesanPenutupWeb] = useState(owner.pesanPenutupWeb || '');
+  const [jamOperasionalWeb, setJamOperasionalWeb] = useState(owner.jamOperasionalWeb || '');
+  const [ctaTeksKustom, setCtaTeksKustom] = useState(owner.ctaTeksKustom || '');
+  const [ctaLinkKustom, setCtaLinkKustom] = useState(owner.ctaLinkKustom || '');
+  const [teksTombolBooking, setTeksTombolBooking] = useState(owner.teksTombolBooking || '');
+
+  // Website Profil Ke-2 (Sub-Brand / Spesialisasi)
+  const [web2Aktif, setWeb2Aktif] = useState(owner.webProfil2?.aktif || false);
+  const [web2SubJudul, setWeb2SubJudul] = useState(owner.webProfil2?.subJudul || '');
+  const [web2Slug, setWeb2Slug] = useState(owner.webProfil2?.usernameSlug || `${owner.username || 'vendor'}-2`);
+  const [web2Tagline, setWeb2Tagline] = useState(owner.webProfil2?.taglineWeb || '');
+  const [web2Bio, setWeb2Bio] = useState(owner.webProfil2?.bioWeb || '');
+  const [web2Tema, setWeb2Tema] = useState<'MODERN_STUDIO' | 'LUXURY_GOLD' | 'CLEAN_MINIMALIST' | 'VERTICAL_LANDING'>(
+    owner.webProfil2?.temaWeb || 'VERTICAL_LANDING'
+  );
+  const [web2Layout, setWeb2Layout] = useState<'HORIZONTAL_BOOK' | 'VERTICAL_LANDING'>(
+    owner.webProfil2?.layoutWeb || 'VERTICAL_LANDING'
+  );
+  const [web2LinkBookingKhusus, setWeb2LinkBookingKhusus] = useState(owner.webProfil2?.linkBookingKhusus || '');
+  const [web2PortoPhotos, setWeb2PortoPhotos] = useState<string[]>(() =>
+    Array.from({ length: 6 }, (_, i) => owner.webProfil2?.portofolioWeb?.[i] || '')
+  );
+  const [web2PortoCaptions, setWeb2PortoCaptions] = useState<string[]>(() =>
+    Array.from({ length: 6 }, (_, i) => owner.webProfil2?.portofolioCaptions?.[i] || '')
+  );
+
+  const [uploadingSlot, setUploadingSlot] = useState<string | null>(null);
+  const [activeWebPreview, setActiveWebPreview] = useState<'NONE' | 'BOOKING' | 'PROFIL' | 'PROFIL2'>('NONE');
+  const [previewReloadKey, setPreviewReloadKey] = useState(0);
+
+  const [rekState, setRekState] = useState<RekeningModel>(rekening);
+  const [waTagihan, setWaTagihan] = useState(owner.templateWaTagihan);
+  const [waKonfirmasi, setWaKonfirmasi] = useState(owner.templateWaKonfirmasi);
+  const [waBookingWeb, setWaBookingWeb] = useState(owner.templateWaBookingWeb);
+
+  // Sinkronkan form saat data owner/rekening selesai dimuat dari Firebase
+  React.useEffect(() => {
+    setNamaBrand(owner.namaBrand || '');
+    setNamaOwner(owner.namaOwner || '');
+    setJenisUsaha(owner.jenisUsaha || 'Fotografi & Studio Foto');
+    setNoWa(owner.noWhatsApp || '');
+    setUsernameWeb(owner.username || owner.uid || 'kafelastudio');
+    setTaglineWeb(owner.taglineWeb || '');
+    setBioWeb(owner.bioWeb || '');
+    setLinkIg(owner.linkIg || '');
+    setLinkTiktok(owner.linkTiktok || '');
+    setLokasi1(owner.lokasi1 || '');
+    setLokasi2(owner.lokasi2 || '');
+    setLokasi3(owner.lokasi3 || '');
+    setPortoPhotos(Array.from({ length: 8 }, (_, i) => owner.portofolioWeb?.[i] || ''));
+    setPortoCaptions(Array.from({ length: 8 }, (_, i) => owner.portofolioCaptions?.[i] || ''));
+    setLogoWeb(owner.logoBrandUrl || '/logo-kafela.svg');
+    setTemaWeb(owner.temaWeb || 'MODERN_STUDIO');
+    setLayoutWeb(owner.layoutWeb || 'HORIZONTAL_BOOK');
+    setPesanPenutupWeb(owner.pesanPenutupWeb || '');
+    setJamOperasionalWeb(owner.jamOperasionalWeb || '');
+    setCtaTeksKustom(owner.ctaTeksKustom || '');
+    setCtaLinkKustom(owner.ctaLinkKustom || '');
+    setTeksTombolBooking(owner.teksTombolBooking || '');
+
+    setWeb2Aktif(owner.webProfil2?.aktif || false);
+    setWeb2SubJudul(owner.webProfil2?.subJudul || '');
+    setWeb2Slug(owner.webProfil2?.usernameSlug || `${owner.username || 'vendor'}-2`);
+    setWeb2Tagline(owner.webProfil2?.taglineWeb || '');
+    setWeb2Bio(owner.webProfil2?.bioWeb || '');
+    setWeb2Tema(owner.webProfil2?.temaWeb || 'VERTICAL_LANDING');
+    setWeb2Layout(owner.webProfil2?.layoutWeb || 'VERTICAL_LANDING');
+    setWeb2LinkBookingKhusus(owner.webProfil2?.linkBookingKhusus || '');
+    setWeb2PortoPhotos(Array.from({ length: 6 }, (_, i) => owner.webProfil2?.portofolioWeb?.[i] || ''));
+    setWeb2PortoCaptions(Array.from({ length: 6 }, (_, i) => owner.webProfil2?.portofolioCaptions?.[i] || ''));
+
+    setWaTagihan(owner.templateWaTagihan || '');
+    setWaKonfirmasi(owner.templateWaKonfirmasi || '');
+    setWaBookingWeb(owner.templateWaBookingWeb || '');
+  }, [owner]);
+
+  React.useEffect(() => {
+    setRekState(rekening);
+  }, [rekening]);
+
+  const compressDataUrlToBudget = (
+    rawDataUrl: string,
+    maxDim: number,
+    maxChars: number
+  ): Promise<string> =>
+    new Promise((resolve, reject) => {
+      if (!rawDataUrl || !rawDataUrl.startsWith('data:image/')) {
+        resolve(rawDataUrl);
+        return;
+      }
+      const img = new Image();
+      img.onload = () => {
+        let targetW = img.width;
+        let targetH = img.height;
+        if (targetW > maxDim || targetH > maxDim) {
+          if (targetW > targetH) {
+            targetH = Math.round((targetH * maxDim) / targetW);
+            targetW = maxDim;
+          } else {
+            targetW = Math.round((targetW * maxDim) / targetH);
+            targetH = maxDim;
+          }
+        }
+
+        // MULTI-STEP PROGRESSIVE DOWNSCALING (Halving 50% bertahap agar tajam & anti-pecah)
+        let curCanvas = document.createElement('canvas');
+        let curW = img.width;
+        let curH = img.height;
+        curCanvas.width = curW;
+        curCanvas.height = curH;
+        const curCtx = curCanvas.getContext('2d');
+        if (!curCtx) {
+          reject(new Error('Canvas context gagal'));
+          return;
+        }
+        curCtx.imageSmoothingEnabled = true;
+        curCtx.imageSmoothingQuality = 'high';
+        curCtx.drawImage(img, 0, 0, curW, curH);
+
+        while (curW * 0.5 > targetW && curH * 0.5 > targetH) {
+          const nextW = Math.max(targetW, Math.round(curW * 0.5));
+          const nextH = Math.max(targetH, Math.round(curH * 0.5));
+          const stepCanvas = document.createElement('canvas');
+          stepCanvas.width = nextW;
+          stepCanvas.height = nextH;
+          const stepCtx = stepCanvas.getContext('2d');
+          if (!stepCtx) break;
+          stepCtx.imageSmoothingEnabled = true;
+          stepCtx.imageSmoothingQuality = 'high';
+          stepCtx.drawImage(curCanvas, 0, 0, curW, curH, 0, 0, nextW, nextH);
+          curCanvas = stepCanvas;
+          curW = nextW;
+          curH = nextH;
+        }
+
+        let finalCanvas = document.createElement('canvas');
+        finalCanvas.width = targetW;
+        finalCanvas.height = targetH;
+        const finalCtx = finalCanvas.getContext('2d');
+        if (!finalCtx) {
+          reject(new Error('Canvas context gagal'));
+          return;
+        }
+        finalCtx.imageSmoothingEnabled = true;
+        finalCtx.imageSmoothingQuality = 'high';
+        finalCtx.drawImage(curCanvas, 0, 0, curW, curH, 0, 0, targetW, targetH);
+
+        // Pastikan setiap foto <= maxChars (~95.000 karakter = ~70 KB)
+        // supaya 8 foto sekaligus (~560 KB) 100% muat di bawah batas 1MB Firestore tanpa pernah gagal simpan!
+        let q = 0.84;
+        let resultDataUrl = finalCanvas.toDataURL('image/jpeg', q);
+        while (resultDataUrl.length > maxChars && q > 0.58) {
+          q -= 0.06;
+          resultDataUrl = finalCanvas.toDataURL('image/jpeg', q);
+        }
+
+        // Jika masih di atas budget, turunkan dimensi 15% secara halus
+        while (resultDataUrl.length > maxChars && targetW > 640) {
+          targetW = Math.round(targetW * 0.85);
+          targetH = Math.round(targetH * 0.85);
+          const smaller = document.createElement('canvas');
+          smaller.width = targetW;
+          smaller.height = targetH;
+          const sCtx = smaller.getContext('2d');
+          if (!sCtx) break;
+          sCtx.imageSmoothingEnabled = true;
+          sCtx.imageSmoothingQuality = 'high';
+          sCtx.drawImage(finalCanvas, 0, 0, finalCanvas.width, finalCanvas.height, 0, 0, targetW, targetH);
+          finalCanvas = smaller;
+          resultDataUrl = finalCanvas.toDataURL('image/jpeg', 0.76);
+        }
+
+        resolve(resultDataUrl);
+      };
+      img.onerror = reject;
+      img.src = rawDataUrl;
+    });
+
+  const compressGalleryImage = (file: File, maxDim: number): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = async (ev) => {
+        try {
+          const rawDataUrl = String(ev.target?.result || '');
+          const maxChars = maxDim <= 600 ? 45000 : 95000;
+          const fitted = await compressDataUrlToBudget(rawDataUrl, maxDim, maxChars);
+          resolve(fitted);
+        } catch (e) {
+          reject(e);
+        }
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+
+  const handleSelectPhotoFromGallery = async (
+    slotId: string,
+    file: File | undefined,
+    maxDim: number,
+    setter: (val: string) => void
+  ) => {
+    if (!file) return;
+    try {
+      setUploadingSlot(slotId);
+      const compressedDataUrl = await compressGalleryImage(file, maxDim);
+      setter(compressedDataUrl);
+      notifySaved('Foto berhasil dipilih. Klik Simpan Pengaturan di bawah untuk menerapkan perubahan.');
+    } catch (err) {
+      console.error('Gagal memproses foto galeri:', err);
+    } finally {
+      setUploadingSlot(null);
+    }
+  };
+
+  const [durasiLangganan, setDurasiLangganan] = useState<'BULANAN' | 'TAHUNAN'>('BULANAN');
+  const [savedBanner, setSavedBanner] = useState<string | null>(null);
+  const [isSavingToast, setIsSavingToast] = useState(false);
+
+  const notifySaved = (msg: string) => {
+    setIsSavingToast(false);
+    setSavedBanner(msg);
+    setTimeout(() => setSavedBanner(null), 3500);
+  };
+
+  const handleSaveOwnerWithToast = async (
+    updates: Partial<OwnerProfile>,
+    successMessage: string
+  ) => {
+    try {
+      setIsSavingToast(true);
+      setSavedBanner('Menyimpan perubahan ke server...');
+      await onUpdateOwner(updates);
+      setPreviewReloadKey((k) => k + 1);
+      notifySaved(successMessage);
+    } catch (err) {
+      console.error('Gagal menyimpan pengaturan:', err);
+      setIsSavingToast(false);
+      setSavedBanner('Gagal menyimpan ke server. Periksa koneksi internet Anda.');
+      setTimeout(() => setSavedBanner(null), 4000);
+    }
+  };
+
+  const targetIdParam = (usernameWeb || owner.uid || '').trim();
+  const linkProfilUtama = `kflsagnd.web.app/${targetIdParam}`;
+  const linkBookingUtama = `kflsagnd.web.app/b/${targetIdParam}`;
+  const localBookingUrl = `/booking.html?id=${encodeURIComponent(targetIdParam)}&tema=${encodeURIComponent(temaWeb)}&v=${previewReloadKey}`;
+  const localProfilUrl = `/profil.html?id=${encodeURIComponent(targetIdParam)}&tema=${encodeURIComponent(temaWeb)}&v=${previewReloadKey}`;
+
+  const sisaHari = Math.max(
+    0,
+    Math.ceil((owner.tanggalLangganan - Date.now()) / (1000 * 60 * 60 * 24))
+  );
+
+  return (
+    <div className="max-w-3xl mx-auto space-y-4">
+      {/* SUB-MENU TAB PILIHAN AGAR TIDAK PUSING (Fokus 1 Menu per Layar) */}
+      <div className="rounded-xl bg-slate-900/95 border border-slate-800 p-2 flex flex-wrap items-center gap-1.5">
+        {(
+          [
+            { id: 'PROFIL', label: '🏢 Profil & Struk' },
+            { id: 'WEB', label: '🌐 Website & Link Booking' },
+            { id: 'REKENING', label: '💳 Rekening & QRIS' },
+            { id: 'WA', label: '💬 Template WhatsApp' },
+            { id: 'PAKET', label: '⭐ Paket (Pro: Fitur Inti | Ultimate: LiveSync+Web2)' },
+          ] as { id: PengaturanSubTab; label: string }[]
+        ).map((item) => {
+          const isActive = subTab === item.id;
+          return (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => setSubTab(item.id)}
+              className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                isActive
+                  ? 'bg-[#2980B9] text-white shadow'
+                  : 'bg-slate-950/70 text-slate-300 hover:bg-slate-800'
+              }`}
+            >
+              {item.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {savedBanner && (
+        <>
+          {/* FLOATING TOAST POPUP MELAYANG DI ATAS LAYAR */}
+          <div className="fixed top-5 left-1/2 -translate-x-1/2 z-[150] w-[92%] max-w-md pointer-events-auto">
+            <div
+              className={`rounded-2xl px-4 py-3.5 shadow-2xl border flex items-center justify-between gap-3 backdrop-blur-md transition-all ${
+                isSavingToast
+                  ? 'bg-slate-900/95 border-sky-500/70 text-sky-200'
+                  : 'bg-emerald-950/95 border-emerald-400/80 text-emerald-100'
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <div
+                  className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 ${
+                    isSavingToast
+                      ? 'bg-sky-500/20 text-sky-300 animate-spin'
+                      : 'bg-emerald-500 text-slate-950'
+                  }`}
+                >
+                  {isSavingToast ? (
+                    <RotateCcw className="w-4 h-4" />
+                  ) : (
+                    <Check className="w-4 h-4 stroke-[3]" />
+                  )}
+                </div>
+                <div>
+                  <p className="text-xs font-extrabold leading-snug">{savedBanner}</p>
+                  {!isSavingToast && (
+                    <p className="text-[10px] text-emerald-300/90">
+                      Tersimpan di database &amp; langsung aktif di website klien
+                    </p>
+                  )}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSavedBanner(null)}
+                className="text-[11px] font-bold px-2 py-1 rounded bg-white/10 hover:bg-white/20 text-white cursor-pointer shrink-0"
+              >
+                Tutup
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* 1. TAB PROFIL STUDIO & STRUK */}
+      {subTab === 'PROFIL' && (
+        <div className="rounded-xl bg-slate-900 border border-slate-800 p-5 space-y-4 text-xs">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-3">
+            <div className="flex items-center gap-2">
+              <Building2 className="w-4 h-4 text-sky-400" />
+              <div>
+                <h3 className="text-sm font-bold text-white">Profil Brand &amp; Tanda Tangan Struk</h3>
+                <p className="text-[11px] text-slate-400">
+                  Mengatur nama bisnis, jenis profesi, logo, dan tanda tangan nota digital
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={onOpenSignatureModal}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-bold cursor-pointer"
+            >
+              <PenTool className="w-3.5 h-3.5" />
+              <span>Atur Logo &amp; Tanda Tangan Struk</span>
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+            <div>
+              <label className="block text-slate-400 mb-1">Nama Brand / Usaha</label>
+              <input
+                type="text"
+                value={namaBrand}
+                onChange={(e) => setNamaBrand(e.target.value)}
+                className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2.5 text-white"
+              />
+            </div>
+            <div>
+              <label className="block text-slate-400 mb-1">Nama Penanggung Jawab (Owner)</label>
+              <input
+                type="text"
+                value={namaOwner}
+                onChange={(e) => setNamaOwner(e.target.value)}
+                className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2.5 text-white"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+            <div>
+              <label className="block text-slate-400 mb-1">Jenis Usaha Utama (Modul Form)</label>
+              <select
+                value={jenisUsaha}
+                onChange={(e) => setJenisUsaha(e.target.value)}
+                className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2.5 text-white"
+              >
+                {DAFTAR_JENIS_USAHA.map((u) => (
+                  <option key={u} value={u}>
+                    {u}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-slate-400 mb-1">Nomor WhatsApp Kontak</label>
+              <input
+                type="tel"
+                value={noWa}
+                onChange={(e) => setNoWa(e.target.value)}
+                className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2.5 text-white font-mono"
+              />
+            </div>
+          </div>
+
+          <button
+            type="button"
+            disabled={isSavingToast}
+            onClick={() =>
+              handleSaveOwnerWithToast(
+                {
+                  namaBrand: namaBrand.trim(),
+                  namaOwner: namaOwner.trim(),
+                  jenisUsaha,
+                  noWhatsApp: noWa.trim(),
+                },
+                'Profil Brand & Jenis Usaha berhasil disimpan!'
+              )
+            }
+            className="w-full py-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white font-bold cursor-pointer"
+          >
+            {isSavingToast ? 'Menyimpan...' : 'Simpan Profil Brand'}
+          </button>
+        </div>
+      )}
+
+      {/* 2. TAB PENGATURAN WEBSITE PRIBADI & LINK BOOKING */}
+      {subTab === 'WEB' && (
+        <div className="rounded-xl bg-slate-900 border border-slate-800 p-5 space-y-4 text-xs">
+          <div className="flex items-center gap-2 border-b border-slate-800 pb-3">
+            <Globe className="w-4 h-4 text-purple-400" />
+            <div>
+              <h3 className="text-sm font-bold text-white">
+                Pengaturan Website Pribadi &amp; Link Booking Klien
+              </h3>
+              <p className="text-[11px] text-slate-400">
+                Bagikan tautan ini ke bio Instagram/TikTok atau kirim ke WhatsApp calon klien
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+            <div>
+              <label className="block text-slate-400 mb-1">Username Tautan (Tanpa Spasi)</label>
+              <input
+                type="text"
+                value={usernameWeb}
+                onChange={(e) =>
+                  setUsernameWeb(e.target.value.toLowerCase().replace(/\s+/g, ''))
+                }
+                className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2.5 text-white font-mono"
+              />
+            </div>
+            <div>
+              <label className="block text-slate-400 mb-1">Slogan Singkat (Tampil di Halaman Utama)</label>
+              <input
+                type="text"
+                placeholder="Contoh: Abadikan Momen Sekali Seumur Hidup"
+                value={taglineWeb}
+                onChange={(e) => setTaglineWeb(e.target.value)}
+                className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2.5 text-white"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-slate-400 mb-1">
+              Bio / Caption Perkenalan Studio (Tampil di Halaman Utama di Bawah Slogan)
+            </label>
+            <textarea
+              rows={2}
+              placeholder="Contoh: Halo, kami melayani dokumentasi pernikahan, prewedding, dan event profesional dengan sentuhan hangat..."
+              value={bioWeb}
+              onChange={(e) => setBioWeb(e.target.value)}
+              className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-white text-xs leading-relaxed"
+            />
+          </div>
+
+          {/* KOTAK TAUTAN BOOKING & LANDING PAGE PROFIL + TAMPILAN LANGSUNG SAAT DIKLIK */}
+          <div className="rounded-lg bg-slate-950 border border-slate-800 p-3.5 space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="truncate">
+                <span className="text-slate-400 block text-[11px]">
+                  Tautan Langsung Form Booking (booking.html):
+                </span>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setActiveWebPreview((prev) => (prev === 'BOOKING' ? 'NONE' : 'BOOKING'))
+                  }
+                  className="font-mono text-sky-400 hover:text-sky-300 underline font-bold text-left cursor-pointer mt-0.5"
+                >
+                  https://{linkBookingUtama}
+                </button>
+              </div>
+              <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(`https://${linkBookingUtama}`);
+                    notifySaved('Tautan Form Booking disalin ke clipboard!');
+                  }}
+                  className="px-2.5 py-1.5 rounded border border-slate-700 text-slate-200 hover:bg-slate-800 cursor-pointer flex items-center gap-1"
+                >
+                  <Copy className="w-3 h-3" />
+                  <span>Salin</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setActiveWebPreview((prev) => (prev === 'BOOKING' ? 'NONE' : 'BOOKING'))
+                  }
+                  className="px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-bold flex items-center gap-1 cursor-pointer"
+                >
+                  <ExternalLink className="w-3 h-3" />
+                  <span>{activeWebPreview === 'BOOKING' ? 'Tutup Form' : 'Buka Form Booking'}</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-2.5 border-t border-slate-800/80">
+              <div className="truncate">
+                <span className="text-slate-400 block text-[11px]">
+                  Tautan Website Profesional / Landing Page (Untuk Bio IG / TikTok):
+                </span>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setActiveWebPreview((prev) => (prev === 'PROFIL' ? 'NONE' : 'PROFIL'))
+                  }
+                  className="font-mono text-sky-400 hover:text-sky-300 underline font-bold text-left cursor-pointer mt-0.5"
+                >
+                  https://{linkProfilUtama}
+                </button>
+              </div>
+              <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(`https://${linkProfilUtama}`);
+                    notifySaved('Tautan Website Profil disalin ke clipboard!');
+                  }}
+                  className="px-2.5 py-1.5 rounded border border-slate-700 text-slate-200 hover:bg-slate-800 cursor-pointer flex items-center gap-1"
+                >
+                  <Copy className="w-3 h-3" />
+                  <span>Salin</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setActiveWebPreview((prev) => (prev === 'PROFIL' ? 'NONE' : 'PROFIL'))
+                  }
+                  className="px-3 py-1.5 rounded bg-sky-600 hover:bg-sky-500 text-white font-bold flex items-center gap-1 cursor-pointer"
+                >
+                  <ExternalLink className="w-3 h-3" />
+                  <span>
+                    {activeWebPreview === 'PROFIL' ? 'Tutup Website' : 'Buka Website Klien'}
+                  </span>
+                </button>
+              </div>
+            </div>
+
+            {/* TAMPILAN LANGSUNG BOOKING.HTML / PROFIL.HTML SAAT LINK DIKLIK */}
+            {activeWebPreview !== 'NONE' && (
+              <div className="mt-3 pt-3 border-t border-slate-800 space-y-2.5">
+                <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-900 px-3 py-2 rounded-lg border border-slate-700">
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setActiveWebPreview('PROFIL')}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer ${
+                        activeWebPreview === 'PROFIL'
+                          ? 'bg-sky-600 text-white'
+                          : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                      }`}
+                    >
+                      🌐 Website Studio Profesional (profil.html)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveWebPreview('BOOKING')}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer ${
+                        activeWebPreview === 'BOOKING'
+                          ? 'bg-emerald-600 text-white'
+                          : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                      }`}
+                    >
+                      📝 Form Booking Online (booking.html)
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <a
+                      href={activeWebPreview === 'BOOKING' ? localBookingUrl : localProfilUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-2.5 py-1.5 rounded bg-white/10 hover:bg-white/15 text-white text-[11px] font-bold flex items-center gap-1"
+                    >
+                      <ExternalLink className="w-3 h-3" />
+                      <span>Tab Penuh</span>
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => setActiveWebPreview('NONE')}
+                      className="px-2.5 py-1.5 rounded bg-rose-600/25 hover:bg-rose-600/40 text-rose-300 text-[11px] font-bold cursor-pointer"
+                    >
+                      Tutup
+                    </button>
+                  </div>
+                </div>
+
+                <div className="w-full rounded-xl overflow-hidden border border-slate-700 bg-[#f4f6f8] shadow-inner">
+                  <iframe
+                    key={`${activeWebPreview}-${targetIdParam}-${temaWeb}`}
+                    src={activeWebPreview === 'BOOKING' ? localBookingUrl : localProfilUrl}
+                    title={
+                      activeWebPreview === 'BOOKING'
+                        ? 'Form Booking Online'
+                        : 'Website Studio Profesional'
+                    }
+                    className="w-full h-[720px] border-0"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* 1. PILIHAN ARSITEKTUR TATA LETAK WEBSITE */}
+          <div className="rounded-xl bg-slate-950 border border-slate-800 p-4 space-y-3">
+            <div>
+              <h4 className="font-bold text-white text-xs flex items-center gap-1.5">
+                <span>📱</span>
+                <span>Pilih Gaya Tata Letak Website (UX Mode)</span>
+              </h4>
+              <p className="text-[11px] text-slate-400">
+                Pilih apakah website klien tampil dalam mode buku geser samping atau scroll ke bawah alami:
+              </p>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => setLayoutWeb('HORIZONTAL_BOOK')}
+                className={`text-left rounded-xl p-3.5 border transition-all cursor-pointer flex flex-col justify-between gap-2 ${
+                  layoutWeb === 'HORIZONTAL_BOOK'
+                    ? 'border-purple-500 bg-purple-950/30 ring-2 ring-purple-500/40'
+                    : 'border-slate-800 bg-slate-900/50 hover:border-slate-700'
+                }`}
+              >
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                      <span>📖</span>
+                      <span>Buku Editorial Majalah</span>
+                    </span>
+                    {layoutWeb === 'HORIZONTAL_BOOK' && (
+                      <span className="px-2 py-0.5 rounded bg-purple-500 text-white text-[10px] font-extrabold">
+                        AKTIF
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-slate-400 leading-relaxed">
+                    Sistem geser samping (horizontal swipe per bab). Terasa seperti membuka portofolio cetak / lookbook eksklusif.
+                  </p>
+                </div>
+                <span className="text-[10px] text-purple-400 font-semibold">Gaya Majalah Seni (Geser Kanan &rarr;)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setLayoutWeb('VERTICAL_LANDING')}
+                className={`text-left rounded-xl p-3.5 border transition-all cursor-pointer flex flex-col justify-between gap-2 ${
+                  layoutWeb === 'VERTICAL_LANDING'
+                    ? 'border-emerald-500 bg-emerald-950/30 ring-2 ring-emerald-500/40'
+                    : 'border-slate-800 bg-slate-900/50 hover:border-slate-700'
+                }`}
+              >
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                      <span>⚡</span>
+                      <span>Landing Page Modern (Scroll Bawah)</span>
+                    </span>
+                    {layoutWeb === 'VERTICAL_LANDING' && (
+                      <span className="px-2 py-0.5 rounded bg-emerald-500 text-slate-950 text-[10px] font-extrabold">
+                        AKTIF
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-slate-400 leading-relaxed">
+                    Scroll ke bawah alami vertikal. Hero section megah, grid foto estetik, sticky quick bar, dan konversi booking lebih tinggi.
+                  </p>
+                </div>
+                <span className="text-[10px] text-emerald-400 font-semibold">Rekomendasi HP Smartphone (&darr; Scroll Bawah)</span>
+              </button>
+            </div>
+          </div>
+
+          {/* 2. PILIHAN TEMA WARNA VISUAL */}
+          <div className="rounded-xl bg-slate-950 border border-slate-800 p-4 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <div>
+                <h4 className="font-bold text-white text-xs">
+                  🎨 Pilih Palet Warna &amp; Nuansa Visual (profil.html)
+                </h4>
+                <p className="text-[11px] text-slate-400">
+                  Dapat dipadukan dengan gaya Geser Samping maupun Scroll ke Bawah:
+                </p>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+              {(
+                [
+                  {
+                    id: 'MODERN_STUDIO',
+                    title: '1. Amour Ivory & Rose Gold',
+                    subtitle: 'Krem Hangat, Dusty Rose & Emas Lembut',
+                    badge: 'IVORY ROSE',
+                    previewBg: 'bg-gradient-to-br from-rose-200 via-amber-50 to-rose-100',
+                    accentBorder: 'border-rose-400',
+                  },
+                  {
+                    id: 'LUXURY_GOLD',
+                    title: '2. Royal Obsidian & Gold',
+                    subtitle: 'Hitam Obsidian & Tinta Emas Mewah',
+                    badge: 'ROYAL GOLD',
+                    previewBg: 'bg-gradient-to-br from-neutral-950 via-stone-900 to-amber-950',
+                    accentBorder: 'border-amber-500',
+                  },
+                  {
+                    id: 'CLEAN_MINIMALIST',
+                    title: '3. Botanical White & Sage',
+                    subtitle: 'Putih Bersih & Aksen Hijau Sage Modern',
+                    badge: 'BOTANICAL SAGE',
+                    previewBg: 'bg-gradient-to-br from-slate-100 via-white to-emerald-50',
+                    accentBorder: 'border-emerald-500',
+                  },
+                  {
+                    id: 'VERTICAL_LANDING',
+                    title: '4. Obsidian Glow & Amber',
+                    subtitle: 'Gelap Modern & Aksen Emas Hangat',
+                    badge: 'OBSIDIAN GLOW',
+                    previewBg: 'bg-gradient-to-br from-slate-950 via-slate-900 to-amber-900',
+                    accentBorder: 'border-amber-400',
+                  },
+                ] as const
+              ).map((t) => {
+                const isSelected = temaWeb === t.id;
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => setTemaWeb(t.id)}
+                    className={`text-left rounded-xl p-3 border transition-all cursor-pointer flex flex-col justify-between gap-2 ${
+                      isSelected
+                        ? `${t.accentBorder} bg-slate-900 ring-2 ring-purple-500/40`
+                        : 'border-slate-800 bg-slate-900/50 hover:border-slate-700'
+                    }`}
+                  >
+                    <div className="space-y-1.5">
+                      <div className={`h-10 w-full rounded-lg ${t.previewBg} border border-white/10 flex items-center justify-between px-2.5`}>
+                        <span className={`text-[10px] font-extrabold tracking-wider ${t.id === 'LUXURY_GOLD' || t.id === 'VERTICAL_LANDING' ? 'text-white' : 'text-slate-900'}`}>
+                          {t.badge}
+                        </span>
+                        {isSelected && (
+                          <span className="px-2 py-0.5 rounded bg-emerald-500 text-slate-950 text-[10px] font-extrabold">
+                            AKTIF
+                          </span>
+                        )}
+                      </div>
+                      <p className="font-bold text-white text-xs">{t.title}</p>
+                      <p className="text-[10px] text-slate-400 leading-snug">{t.subtitle}</p>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* 3. PENGATURAN HALAMAN PENUTUP & KONTAK */}
+          <div className="rounded-xl bg-slate-950 border border-slate-800 p-4 space-y-3">
+            <div>
+              <h4 className="font-bold text-white text-xs flex items-center gap-1.5">
+                <span>💌</span>
+                <span>Halaman Penutup &amp; Kontak</span>
+              </h4>
+              <p className="text-[11px] text-slate-400">
+                Atur pesan penutup, jam operasional, tombol tautan, dan teks tombol booking:
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-slate-400 mb-1">
+                  Pesan Penutup (Tampil di atas tombol booking)
+                </label>
+                <textarea
+                  rows={2}
+                  placeholder="Contoh: Setiap momen berharga layak diabadikan dengan sentuhan terbaik. Diskusikan konsep impianmu bersama kami."
+                  value={pesanPenutupWeb}
+                  onChange={(e) => setPesanPenutupWeb(e.target.value)}
+                  className="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-white text-xs leading-relaxed"
+                />
+              </div>
+              <div>
+                <label className="block text-slate-400 mb-1">
+                  Jam Operasional / Keterangan
+                </label>
+                <input
+                  type="text"
+                  placeholder="Contoh: Buka Setiap Hari: 09.00 - 21.00 WIB (Reservasi H-1)"
+                  value={jamOperasionalWeb}
+                  onChange={(e) => setJamOperasionalWeb(e.target.value)}
+                  className="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-white text-xs"
+                />
+                <div className="mt-2.5">
+                  <label className="block text-slate-400 mb-1">
+                    Teks Tombol Booking Utama
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Contoh: Booking Online / Reservasi Jadwal"
+                    value={teksTombolBooking}
+                    onChange={(e) => setTeksTombolBooking(e.target.value)}
+                    className="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-white text-xs"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-800">
+              <div>
+                <label className="block text-slate-400 mb-1">
+                  Label Tombol Tambahan (Opsional)
+                </label>
+                <input
+                  type="text"
+                  placeholder="Contoh: Chat WhatsApp Konsultasi / Buka Google Maps"
+                  value={ctaTeksKustom}
+                  onChange={(e) => setCtaTeksKustom(e.target.value)}
+                  className="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-white text-xs"
+                />
+              </div>
+              <div>
+                <label className="block text-slate-400 mb-1">
+                  Tautan Tombol Tambahan (Opsional)
+                </label>
+                <input
+                  type="text"
+                  placeholder="https://wa.me/628... atau link Google Maps / Drive"
+                  value={ctaLinkKustom}
+                  onChange={(e) => setCtaLinkKustom(e.target.value)}
+                  className="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-white text-xs"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-slate-400 mb-1">Link Instagram</label>
+              <input
+                type="text"
+                placeholder="https://instagram.com/..."
+                value={linkIg}
+                onChange={(e) => setLinkIg(e.target.value)}
+                className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-white"
+              />
+            </div>
+            <div>
+              <label className="block text-slate-400 mb-1">Link TikTok</label>
+              <input
+                type="text"
+                placeholder="https://tiktok.com/@..."
+                value={linkTiktok}
+                onChange={(e) => setLinkTiktok(e.target.value)}
+                className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-white"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label className="block text-slate-400 mb-1">Cabang / Lokasi 1</label>
+              <input
+                type="text"
+                placeholder="Contoh: Cabang Pusat..."
+                value={lokasi1}
+                onChange={(e) => setLokasi1(e.target.value)}
+                className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-white"
+              />
+            </div>
+            <div>
+              <label className="block text-slate-400 mb-1">Cabang / Lokasi 2 (Opsional)</label>
+              <input
+                type="text"
+                placeholder="Cabang 2..."
+                value={lokasi2}
+                onChange={(e) => setLokasi2(e.target.value)}
+                className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-white"
+              />
+            </div>
+            <div>
+              <label className="block text-slate-400 mb-1">Cabang / Lokasi 3 (Opsional)</label>
+              <input
+                type="text"
+                placeholder="Cabang 3..."
+                value={lokasi3}
+                onChange={(e) => setLokasi3(e.target.value)}
+                className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-white"
+              />
+            </div>
+          </div>
+
+          {/* UPLOAD LOGO & 8 FOTO GALERI */}
+          <div className="space-y-3 pt-3 border-t border-slate-800">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <label className="block text-slate-200 font-bold text-xs">
+                  Foto Profil / Logo &amp; Galeri Portofolio
+                </label>
+                <p className="text-[11px] text-slate-400">
+                  <strong className="text-amber-300">Foto 1</strong> untuk latar belakang sampul utama. <strong className="text-sky-300">Foto 2 s/d 8</strong> tampil di galeri portofolio web.
+                </p>
+              </div>
+            </div>
+
+            {/* Baris Upload Logo Brand Landing Page */}
+            <div className="rounded-xl bg-slate-950 border border-slate-800 p-3 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <img
+                  src={logoWeb || '/logo-kafela.svg'}
+                  alt="Logo Studio"
+                  className="w-14 h-14 rounded-full object-cover border-2 border-amber-500/70 bg-white shrink-0"
+                />
+                <div>
+                  <p className="font-bold text-white text-xs">Foto Profil / Logo Brand di Aplikasi &amp; Website</p>
+                  <p className="text-[11px] text-slate-400">
+                    {uploadingSlot === 'LOGO'
+                      ? 'Memproses logo...'
+                      : logoWeb && logoWeb !== '/logo-kafela.svg'
+                      ? 'Logo kustom terpasang'
+                      : "Menggunakan Logo Resmi kafela's Agenda"}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="px-3 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs cursor-pointer">
+                  <span>📷 Ganti Logo</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) =>
+                      handleSelectPhotoFromGallery('LOGO', e.target.files?.[0], 500, setLogoWeb)
+                    }
+                  />
+                </label>
+                {logoWeb && logoWeb !== '/logo-kafela.svg' && (
+                  <button
+                    type="button"
+                    onClick={() => setLogoWeb('/logo-kafela.svg')}
+                    className="px-2.5 py-2 rounded-lg bg-amber-600/20 hover:bg-amber-600/35 text-amber-300 font-bold text-xs cursor-pointer"
+                  >
+                    Reset ke Logo Kafela
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Grid 8 Slot Foto Galeri */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              {Array.from({ length: 8 }, (_, idx) => {
+                const slotId = `PORTO_${idx + 1}`;
+                const val = portoPhotos[idx] || '';
+                const captionVal = portoCaptions[idx] || '';
+                const isBgCover = idx === 0;
+                const isFeaturedTop = idx === 1;
+
+                const updatePhotoAt = (newUrl: string) => {
+                  setPortoPhotos((prev) => {
+                    const copy = [...prev];
+                    copy[idx] = newUrl;
+                    return copy;
+                  });
+                };
+
+                const updateCaptionAt = (newCap: string) => {
+                  setPortoCaptions((prev) => {
+                    const copy = [...prev];
+                    copy[idx] = newCap;
+                    return copy;
+                  });
+                };
+
+                return (
+                  <div
+                    key={slotId}
+                    className={`rounded-xl p-2.5 flex flex-col justify-between space-y-2 border ${
+                      isBgCover
+                        ? 'bg-amber-950/20 border-amber-500/60'
+                        : isFeaturedTop
+                        ? 'bg-sky-950/20 border-sky-500/50'
+                        : 'bg-slate-950 border-slate-800'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-1">
+                      <div>
+                        <span className="text-[11px] font-extrabold text-white block">
+                          {isBgCover
+                            ? '📌 Foto 1 (Sampul)'
+                            : isFeaturedTop
+                            ? '⭐ Foto 2 (Foto Utama)'
+                            : `🖼️ Foto ${idx + 1}`}
+                        </span>
+                        <span className="text-[10px] text-slate-400 block leading-tight">
+                          {isBgCover
+                            ? 'Latar Sampul Depan'
+                            : isFeaturedTop
+                            ? 'Foto Utama di Galeri'
+                            : 'Tampil di Grid Galeri'}
+                        </span>
+                      </div>
+                      {val && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            updatePhotoAt('');
+                            updateCaptionAt('');
+                          }}
+                          className="text-[10px] font-bold text-rose-400 hover:text-rose-300 cursor-pointer shrink-0"
+                        >
+                          Hapus
+                        </button>
+                      )}
+                    </div>
+
+                    {val ? (
+                      <div className="relative rounded-lg overflow-hidden h-28 bg-slate-900 border border-slate-800">
+                        <img
+                          src={val}
+                          alt={`Foto ${idx + 1}`}
+                          className="w-full h-full object-cover"
+                        />
+                        <span className="absolute bottom-1.5 left-1.5 px-1.5 py-0.5 rounded text-[9px] font-semibold shadow bg-emerald-600 text-white">
+                          ✓ Siap Simpan
+                        </span>
+                      </div>
+                    ) : (
+                      <label className="h-28 rounded-lg border-2 border-dashed border-slate-700 hover:border-purple-400 bg-slate-900/60 flex flex-col items-center justify-center text-center p-2 cursor-pointer transition-colors">
+                        <span className="text-lg">📷</span>
+                        <span className="text-[11px] font-bold text-purple-300 mt-1">
+                          {uploadingSlot === slotId ? 'Memproses...' : 'Pilih Foto'}
+                        </span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) =>
+                            handleSelectPhotoFromGallery(
+                              slotId,
+                              e.target.files?.[0],
+                              1280,
+                              updatePhotoAt
+                            )
+                          }
+                        />
+                      </label>
+                    )}
+
+                    {/* Input Judul / Keterangan Foto */}
+                    {!isBgCover && (
+                      <input
+                        type="text"
+                        placeholder="Judul / Keterangan Foto"
+                        value={captionVal}
+                        onChange={(e) => updateCaptionAt(e.target.value)}
+                        className="w-full rounded-lg bg-slate-900 border border-slate-700 px-2.5 py-1.5 text-[11px] text-white placeholder:text-slate-500"
+                      />
+                    )}
+
+                    {isBgCover && (
+                      <div className="px-2 py-1 rounded bg-amber-500/10 border border-amber-500/30 text-[10px] text-amber-300 font-semibold text-center">
+                        Latar Sampul Depan
+                      </div>
+                    )}
+
+                    {val && (
+                      <label className="w-full py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-center text-[11px] font-bold text-slate-200 cursor-pointer block">
+                        <span>Ganti Foto</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) =>
+                            handleSelectPhotoFromGallery(
+                              slotId,
+                              e.target.files?.[0],
+                              1280,
+                              updatePhotoAt
+                            )
+                          }
+                        />
+                      </label>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* 4. WEBSITE PROFIL KE-2 (SUB-BRAND / SPESIALISASI) [Add-On Pro+ Rp 10.000 / bln] */}
+          <div className="rounded-xl bg-slate-950 border border-slate-800 p-4 space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <span className="text-base">✨</span>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h4 className="font-bold text-white text-xs">
+                      Website Profil Ke-2 (Sub-Brand / Spesialisasi Niche)
+                    </h4>
+                    <span className="px-2 py-0.5 rounded-full text-[9px] font-extrabold bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950">
+                      PRO+ ADD-ON (Rp 10.000 / Bln) / ULTIMATE
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-400">
+                    Miliki 2 link profil web berbeda (misal: Wedding vs Self Studio / Wisuda / MUA) dalam 1 akun kasir yang sama!
+                  </p>
+                </div>
+              </div>
+
+              <label className="flex items-center gap-2 cursor-pointer bg-slate-900 border border-slate-700 px-3 py-1.5 rounded-lg hover:border-amber-400 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={web2Aktif}
+                  onChange={(e) => setWeb2Aktif(e.target.checked)}
+                  className="w-4 h-4 rounded text-amber-500 focus:ring-0 cursor-pointer"
+                />
+                <span className="text-xs font-bold text-white">
+                  {web2Aktif ? 'Web Ke-2 Aktif' : 'Aktifkan Web Ke-2'}
+                </span>
+              </label>
+            </div>
+
+            {web2Aktif ? (
+              <div className="space-y-4 pt-1">
+                {/* Tautan Web 2 */}
+                <div className="rounded-lg bg-slate-900/90 border border-amber-500/30 p-3 flex flex-wrap items-center justify-between gap-2">
+                  <div className="truncate">
+                    <span className="text-amber-400 block text-[11px] font-bold">
+                      Tautan Langsung Web Profil Ke-2:
+                    </span>
+                    <span className="font-mono text-white text-xs select-all">
+                      https://kflsagnd.web.app/{targetIdParam}?web=2
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText(`https://kflsagnd.web.app/${targetIdParam}?web=2`);
+                        notifySaved('Tautan Web Profil Ke-2 disalin ke clipboard!');
+                      }}
+                      className="px-2.5 py-1.5 rounded border border-slate-700 text-slate-200 hover:bg-slate-800 cursor-pointer flex items-center gap-1 text-[11px]"
+                    >
+                      <Copy className="w-3 h-3" />
+                      <span>Salin</span>
+                    </button>
+                    <a
+                      href={`/profil.html?id=${encodeURIComponent(targetIdParam)}&web=2&v=${previewReloadKey}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-3 py-1.5 rounded bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold flex items-center gap-1 text-[11px]"
+                    >
+                      <ExternalLink className="w-3 h-3" />
+                      <span>Buka Web Ke-2</span>
+                    </a>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-slate-400 mb-1">
+                      Sub-Judul / Nama Niche Spesialisasi
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Contoh: Wedding & Prewedding / Creative Self Studio"
+                      value={web2SubJudul}
+                      onChange={(e) => setWeb2SubJudul(e.target.value)}
+                      className="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-slate-400 mb-1">
+                      Slogan Khusus Web Ke-2
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Contoh: Studio Foto Self-Service Pertama di Kota Anda"
+                      value={web2Tagline}
+                      onChange={(e) => setWeb2Tagline(e.target.value)}
+                      className="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-white"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-slate-400 mb-1">
+                    Bio / Deskripsi Perkenalan Khusus Web Ke-2
+                  </label>
+                  <textarea
+                    rows={2}
+                    placeholder="Contoh: Abadikan momen seru wisuda dan hangout tanpa fotografer, foto sepuasnya dengan shutter nirkabel..."
+                    value={web2Bio}
+                    onChange={(e) => setWeb2Bio(e.target.value)}
+                    className="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-white text-xs leading-relaxed"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-slate-400 mb-1">
+                      Gaya Tata Letak Web Ke-2
+                    </label>
+                    <select
+                      value={web2Layout}
+                      onChange={(e) => setWeb2Layout(e.target.value as any)}
+                      className="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-white text-xs"
+                    >
+                      <option value="VERTICAL_LANDING">⚡ Landing Page Modern (Scroll ke Bawah)</option>
+                      <option value="HORIZONTAL_BOOK">📖 Buku Editorial (Geser Samping per Bab)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-slate-400 mb-1">
+                      Tema Warna Web Ke-2
+                    </label>
+                    <select
+                      value={web2Tema}
+                      onChange={(e) => setWeb2Tema(e.target.value as any)}
+                      className="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-white text-xs"
+                    >
+                      <option value="VERTICAL_LANDING">Obsidian Glow & Amber (Modern Landing)</option>
+                      <option value="MODERN_STUDIO">Amour Ivory & Rose Gold</option>
+                      <option value="LUXURY_GOLD">Royal Obsidian & Gold</option>
+                      <option value="CLEAN_MINIMALIST">Botanical White & Sage</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Pengaturan Link Booking Khusus Web 2 */}
+                <div className="rounded-lg bg-slate-900 border border-slate-800 p-3 space-y-2">
+                  <label className="block text-white font-bold text-xs">
+                    🔗 Opsi Link Booking untuk Web Ke-2:
+                  </label>
+                  <p className="text-[11px] text-slate-400">
+                    Kosongkan jika ingin memakai Form Booking utama bawaan, atau isi link khusus (misal Google Form / WhatsApp divisi khusus / reservasi slot):
+                  </p>
+                  <input
+                    type="text"
+                    placeholder="Contoh: https://wa.me/628... atau link khusus (Kosongkan = otomatis booking utama)"
+                    value={web2LinkBookingKhusus}
+                    onChange={(e) => setWeb2LinkBookingKhusus(e.target.value)}
+                    className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-white text-xs font-mono"
+                  />
+                </div>
+
+                {/* Upload Foto Khusus Web 2 */}
+                <div className="space-y-2 pt-2 border-t border-slate-800">
+                  <div className="flex items-center justify-between">
+                    <label className="text-white font-bold text-xs">
+                      🖼️ Foto Portofolio Khusus Web Ke-2 (Hingga 6 Foto)
+                    </label>
+                    <span className="text-[10px] text-slate-400">
+                      Foto 1 menjadi background sampul Web 2
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+                    {Array.from({ length: 6 }, (_, idx) => {
+                      const slotId = `WEB2_PORTO_${idx + 1}`;
+                      const val = web2PortoPhotos[idx] || '';
+                      const capVal = web2PortoCaptions[idx] || '';
+                      return (
+                        <div key={slotId} className="rounded-lg p-2 bg-slate-900 border border-slate-800 space-y-1.5 flex flex-col justify-between">
+                          <span className="text-[10px] font-bold text-slate-300 block truncate">
+                            {idx === 0 ? '📌 Sampul Web 2' : `Foto ${idx + 1}`}
+                          </span>
+                          {val ? (
+                            <div className="relative rounded overflow-hidden h-20 bg-slate-950 border border-slate-800">
+                              <img src={val} alt={`Web 2 ${idx}`} className="w-full h-full object-cover" />
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setWeb2PortoPhotos((prev) => { const c = [...prev]; c[idx] = ''; return c; });
+                                  setWeb2PortoCaptions((prev) => { const c = [...prev]; c[idx] = ''; return c; });
+                                }}
+                                className="absolute top-1 right-1 px-1 py-0.5 rounded bg-rose-600 text-white text-[9px] font-bold cursor-pointer"
+                              >
+                                &times;
+                              </button>
+                            </div>
+                          ) : (
+                            <label className="h-20 rounded border border-dashed border-slate-700 hover:border-amber-400 bg-slate-950 flex flex-col items-center justify-center text-center p-1 cursor-pointer">
+                              <span className="text-sm">📷</span>
+                              <span className="text-[9px] font-bold text-amber-300 mt-0.5">Pilih Foto</span>
+                              <input
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                onChange={(e) =>
+                                  handleSelectPhotoFromGallery(
+                                    slotId,
+                                    e.target.files?.[0],
+                                    1280,
+                                    (u) => setWeb2PortoPhotos((prev) => { const c = [...prev]; c[idx] = u; return c; })
+                                  )
+                                }
+                              />
+                            </label>
+                          )}
+                          <input
+                            type="text"
+                            placeholder="Judul"
+                            value={capVal}
+                            onChange={(e) => {
+                              const newVal = e.target.value;
+                              setWeb2PortoCaptions((prev) => { const c = [...prev]; c[idx] = newVal; return c; });
+                            }}
+                            className="w-full rounded bg-slate-950 border border-slate-800 px-1.5 py-1 text-[10px] text-white"
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-lg bg-slate-900/50 border border-dashed border-slate-800 p-4 text-center space-y-2">
+                <p className="text-slate-300 font-bold text-xs">
+                  Website Profil Ke-2 belum diaktifkan.
+                </p>
+                <p className="text-[11px] text-slate-400 max-w-md mx-auto">
+                  Aktifkan fitur ini untuk membuat halaman web kedua dengan portofolio, slogan, dan tema terpisah tanpa harus membuat akun kasir baru.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setWeb2Aktif(true)}
+                  className="px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs cursor-pointer inline-flex items-center gap-1.5"
+                >
+                  <span>✨ Aktifkan Web Profil Ke-2 Sekarang</span>
+                </button>
+              </div>
+            )}
+          </div>
+
+          <button
+            type="button"
+            disabled={isSavingToast}
+            onClick={async () => {
+              const validPhotos: string[] = [];
+              const validCaptions: string[] = [];
+              for (let i = 0; i < 8; i++) {
+                const u = (portoPhotos[i] || '').trim();
+                if (u) {
+                  // Pastikan foto lama yang ukurannya terlalu besar otomatis di-fit <= 95KB sebelum dikirim ke Firestore
+                  const safePhoto =
+                    u.startsWith('data:image/') && u.length > 98000
+                      ? await compressDataUrlToBudget(u, 1280, 95000)
+                      : u;
+                  validPhotos.push(safePhoto);
+                  validCaptions.push((portoCaptions[i] || '').trim());
+                }
+              }
+
+              // Fit foto Web 2
+              const validWeb2Photos: string[] = [];
+              const validWeb2Captions: string[] = [];
+              for (let i = 0; i < 6; i++) {
+                const u2 = (web2PortoPhotos[i] || '').trim();
+                if (u2) {
+                  const safePhoto2 =
+                    u2.startsWith('data:image/') && u2.length > 98000
+                      ? await compressDataUrlToBudget(u2, 1280, 95000)
+                      : u2;
+                  validWeb2Photos.push(safePhoto2);
+                  validWeb2Captions.push((web2PortoCaptions[i] || '').trim());
+                }
+              }
+
+              const safeLogo =
+                logoWeb && logoWeb.startsWith('data:image/') && logoWeb.length > 48000
+                  ? await compressDataUrlToBudget(logoWeb, 500, 45000)
+                  : logoWeb || '/logo-kafela.svg';
+
+              handleSaveOwnerWithToast(
+                {
+                  username: usernameWeb.trim().toLowerCase().replace(/\s+/g, ''),
+                  taglineWeb,
+                  bioWeb,
+                  linkIg,
+                  linkTiktok,
+                  lokasi1,
+                  lokasi2,
+                  lokasi3,
+                  logoBrandUrl: safeLogo,
+                  portofolioWeb: validPhotos,
+                  portofolioCaptions: validCaptions,
+                  temaWeb,
+                  layoutWeb,
+                  pesanPenutupWeb,
+                  jamOperasionalWeb,
+                  ctaTeksKustom,
+                  ctaLinkKustom,
+                  teksTombolBooking,
+                  webProfil2: {
+                    aktif: web2Aktif,
+                    subJudul: web2SubJudul.trim(),
+                    usernameSlug: web2Slug.trim().toLowerCase().replace(/\s+/g, ''),
+                    taglineWeb: web2Tagline,
+                    bioWeb: web2Bio,
+                    temaWeb: web2Tema,
+                    layoutWeb: web2Layout,
+                    linkBookingKhusus: web2LinkBookingKhusus.trim(),
+                    portofolioWeb: validWeb2Photos,
+                    portofolioCaptions: validWeb2Captions,
+                    pesanPenutupWeb,
+                  },
+                },
+                'Pengaturan Website, Layout, Penutup & Web Ke-2 berhasil disimpan ke server!'
+              );
+            }}
+            className="w-full py-3.5 rounded-xl bg-purple-600 hover:bg-purple-500 disabled:opacity-60 text-white font-extrabold shadow-lg cursor-pointer flex items-center justify-center gap-2"
+          >
+            <Check className="w-4 h-4" />
+            <span>
+              {isSavingToast
+                ? 'Menyimpan ke Server...'
+                : 'Simpan Identitas Website, Layout, Penutup & 8 Foto Galeri'}
+            </span>
+          </button>
+        </div>
+      )}
+
+      {/* 3. TAB REKENING BANK & QRIS */}
+      {subTab === 'REKENING' && (
+        <div className="rounded-xl bg-slate-900 border border-slate-800 p-5 space-y-4 text-xs">
+          <div className="flex items-center gap-2 border-b border-slate-800 pb-3">
+            <CreditCard className="w-4 h-4 text-emerald-400" />
+            <div>
+              <h3 className="text-sm font-bold text-white">
+                Atur Rekening Pembayaran &amp; Link QRIS
+              </h3>
+              <p className="text-[11px] text-slate-400">
+                Otomatis dicantumkan saat mengirim tagihan atau instruksi DP ke WhatsApp klien
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label className="block text-slate-400 mb-1">Bank Utama</label>
+              <input
+                type="text"
+                placeholder="BCA"
+                value={rekState.bankUtama}
+                onChange={(e) => setRekState({ ...rekState, bankUtama: e.target.value })}
+                className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2.5 text-white"
+              />
+            </div>
+            <div>
+              <label className="block text-slate-400 mb-1">Nomor Rekening</label>
+              <input
+                type="text"
+                placeholder="3770xxx"
+                value={rekState.rekUtama}
+                onChange={(e) => setRekState({ ...rekState, rekUtama: e.target.value })}
+                className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2.5 text-white font-mono"
+              />
+            </div>
+            <div>
+              <label className="block text-slate-400 mb-1">Atas Nama</label>
+              <input
+                type="text"
+                value={rekState.namaUtama}
+                onChange={(e) => setRekState({ ...rekState, namaUtama: e.target.value })}
+                className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2.5 text-white"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label className="block text-slate-400 mb-1">Bank / E-Wallet ke-2</label>
+              <input
+                type="text"
+                placeholder="DANA / Mandiri"
+                value={rekState.bankAlternatif}
+                onChange={(e) => setRekState({ ...rekState, bankAlternatif: e.target.value })}
+                className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2.5 text-white"
+              />
+            </div>
+            <div>
+              <label className="block text-slate-400 mb-1">No. Rek / HP ke-2</label>
+              <input
+                type="text"
+                value={rekState.rekAlternatif}
+                onChange={(e) => setRekState({ ...rekState, rekAlternatif: e.target.value })}
+                className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2.5 text-white font-mono"
+              />
+            </div>
+            <div>
+              <label className="block text-slate-400 mb-1">Atas Nama ke-2</label>
+              <input
+                type="text"
+                value={rekState.namaAlternatif}
+                onChange={(e) => setRekState({ ...rekState, namaAlternatif: e.target.value })}
+                className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2.5 text-white"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-slate-400 mb-1">Link Pembayaran / QRIS (Opsional)</label>
+            <input
+              type="text"
+              placeholder="https://..."
+              value={rekState.linkPembayaran}
+              onChange={(e) => setRekState({ ...rekState, linkPembayaran: e.target.value })}
+              className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2.5 text-white font-mono"
+            />
+          </div>
+
+          <button
+            type="button"
+            disabled={isSavingToast}
+            onClick={async () => {
+              setIsSavingToast(true);
+              setSavedBanner('Menyimpan rekening ke server...');
+              await onUpdateRekening(rekState);
+              notifySaved('Data Rekening Bank & QRIS berhasil disimpan!');
+            }}
+            className="w-full py-3 rounded-lg bg-sky-600 hover:bg-sky-500 disabled:opacity-60 text-white font-bold cursor-pointer"
+          >
+            {isSavingToast ? 'Menyimpan...' : 'Simpan Pengaturan Rekening'}
+          </button>
+        </div>
+      )}
+
+      {/* 4. TAB TEMPLATE PESAN WHATSAPP */}
+      {subTab === 'WA' && (
+        <div className="rounded-xl bg-slate-900 border border-slate-800 p-5 space-y-3.5 text-xs">
+          <div className="flex items-center gap-2 border-b border-slate-800 pb-3">
+            <MessageSquare className="w-4 h-4 text-emerald-400" />
+            <div>
+              <h3 className="text-sm font-bold text-white">Pengaturan Template Pesan WhatsApp</h3>
+              <p className="text-[11px] text-slate-400">
+                Sesuaikan kalimat pesan otomatis saat mengirim tagihan atau konfirmasi ke klien
+              </p>
+            </div>
+          </div>
+
+          <div className="rounded-lg bg-sky-950/40 border border-sky-500/30 p-3 text-[11px] text-sky-200">
+            <strong>Kode Otomatis:</strong> <code>[NAMA]</code> <code>[ACARA]</code>{' '}
+            <code>[LOKASI]</code> <code>[SISA]</code> <code>[HARGA]</code> <code>[REKENING]</code>{' '}
+            <code>[BRAND]</code> <code>[TANGGAL]</code>
+          </div>
+
+          <div>
+            <label className="block text-slate-300 font-semibold mb-1">
+              1. Pesan Penagihan (Masih ada sisa tagihan)
+            </label>
+            <textarea
+              rows={3}
+              value={waTagihan}
+              onChange={(e) => setWaTagihan(e.target.value)}
+              className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-white"
+            />
+          </div>
+
+          <div>
+            <label className="block text-slate-300 font-semibold mb-1">
+              2. Pesan Konfirmasi Jadwal (Lunas / Pengingat H-1)
+            </label>
+            <textarea
+              rows={3}
+              value={waKonfirmasi}
+              onChange={(e) => setWaKonfirmasi(e.target.value)}
+              className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-white"
+            />
+          </div>
+
+          <div>
+            <label className="block text-purple-300 font-semibold mb-1">
+              3. Pesan Booking Baru (Dari Web / Instruksi DP)
+            </label>
+            <textarea
+              rows={3}
+              value={waBookingWeb}
+              onChange={(e) => setWaBookingWeb(e.target.value)}
+              className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-white"
+            />
+          </div>
+
+          <button
+            type="button"
+            disabled={isSavingToast}
+            onClick={() =>
+              handleSaveOwnerWithToast(
+                {
+                  templateWaTagihan: waTagihan,
+                  templateWaKonfirmasi: waKonfirmasi,
+                  templateWaBookingWeb: waBookingWeb,
+                },
+                'Template WhatsApp berhasil disimpan!'
+              )
+            }
+            className="w-full py-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white font-bold cursor-pointer"
+          >
+            {isSavingToast ? 'Menyimpan...' : 'Simpan Template WhatsApp'}
+          </button>
+        </div>
+      )}
+
+      {/* 5. TAB INFO PAKET LANGGANAN (TERKUNCI AMAN - USER TIDAK BISA UBAH SENDIRI) */}
+      {subTab === 'PAKET' && (
+        <div className="rounded-xl bg-slate-900 border border-slate-800 p-5 space-y-4 text-xs">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-4">
+            <div>
+              <h2 className="text-base font-bold text-white">
+                Informasi Paket Langganan Kafela&apos;s Agenda
+              </h2>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Paket Aktif Anda Saat Ini:{' '}
+                <span className="text-emerald-400 font-bold uppercase">
+                  {owner.paketAktif} (Sisa {sisaHari} Hari)
+                </span>
+              </p>
+            </div>
+            <div className="flex items-center gap-1.5 bg-slate-950 p-1 rounded-lg border border-slate-800 text-xs">
+              <button
+                type="button"
+                onClick={() => setDurasiLangganan('BULANAN')}
+                className={`px-3 py-1 rounded font-semibold cursor-pointer ${
+                  durasiLangganan === 'BULANAN' ? 'bg-slate-800 text-white' : 'text-slate-400'
+                }`}
+              >
+                Bulanan (30 Hari)
+              </button>
+              <button
+                type="button"
+                onClick={() => setDurasiLangganan('TAHUNAN')}
+                className={`px-3 py-1 rounded font-semibold cursor-pointer ${
+                  durasiLangganan === 'TAHUNAN' ? 'bg-emerald-600 text-white' : 'text-slate-400'
+                }`}
+              >
+                Tahunan (Hemat 20%)
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+            {(
+              [
+                {
+                  tier: 'Starter',
+                  title: 'Paket Starter',
+                  price: durasiLangganan === 'TAHUNAN' ? 'Rp 158.400 / thn' : 'Rp 16.500 / bln',
+                  desc: 'Maks 100 Jadwal/Bulan • 1 Akun Utama (Owner) • Khusus Aplikasi HP',
+                },
+                {
+                  tier: 'Pro',
+                  title: 'Paket Pro (Terlaris)',
+                  price: durasiLangganan === 'TAHUNAN' ? 'Rp 432.000 / thn' : 'Rp 45.000 / bln',
+                  desc: 'Maks 300 Jadwal/Bulan • Akses Kasir PC & HP • Link Website Pribadi',
+                },
+                {
+                  tier: 'Ultimate',
+                  title: 'Paket Ultimate',
+                  price: durasiLangganan === 'TAHUNAN' ? 'Rp 1.334.400 / thn' : 'Rp 139.000 / bln',
+                  desc: 'Jadwal Unlimited • Kasir PC Live Sync Real-time • Fitur Tim (Owner, Admin & Kru)',
+                },
+              ] as { tier: PaketLanggananTier; title: string; price: string; desc: string }[]
+            ).map((p) => {
+              const active = owner.paketAktif.toLowerCase() === p.tier.toLowerCase();
+              const pesanUpgrade = `Halo Admin Kafela's Agenda, saya *${owner.namaOwner}* dari *${owner.namaBrand}* ingin melakukan Perpanjangan / Upgrade ke *${p.title} (${durasiLangganan})*. Mohon info pembayarannya.`;
+              const waAdminUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(pesanUpgrade)}`;
+
+              return (
+                <div
+                  key={p.tier}
+                  className={`rounded-xl p-4 border flex flex-col justify-between ${
+                    active
+                      ? 'bg-sky-950/35 border-sky-500 shadow-lg'
+                      : 'bg-slate-950 border-slate-800'
+                  }`}
+                >
+                  <div>
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-sm text-white">{p.title}</span>
+                      <span className="font-mono font-bold text-emerald-400">{p.price}</span>
+                    </div>
+                    <p className="text-slate-400 mt-2 leading-relaxed">{p.desc}</p>
+                  </div>
+                  <div className="mt-4 pt-2.5 border-t border-slate-800/80">
+                    {active ? (
+                      <span className="block text-center py-1.5 rounded-lg bg-emerald-600/20 text-emerald-300 text-[11px] font-bold">
+                        ✓ Paket Aktif Anda Saat Ini
+                      </span>
+                    ) : (
+                      <a
+                        href={waAdminUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="block text-center py-1.5 rounded-lg bg-[#2980B9] hover:bg-[#2471A3] text-white text-[11px] font-bold transition-colors"
+                      >
+                        Pilih / Upgrade Paket
+                      </a>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+

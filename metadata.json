@@ -1,0 +1,8 @@
+{
+  "name": "Remix Hiduptenangdimalati",
+  "description": "Imported from GitHub: hiduptenangdimalati-bit/Hiduptenangdimalati",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
