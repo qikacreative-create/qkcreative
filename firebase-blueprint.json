@@ -48,6 +48,22 @@
       "schema": "Jadwal",
       "description": "Jadwal milik pemilik studio"
     },
+    "/owners/{ownerId}/paket_layanan/{paketId}": {
+      "schema": "PaketLayanan",
+      "description": "Katalog paket layanan studio"
+    },
+    "/owners/{ownerId}/galeri_web/{galeriId}": {
+      "schema": "GaleriWeb",
+      "description": "Galeri foto portofolio web studio"
+    },
+    "/owners/{ownerId}/pengaturan/{pengaturanId}": {
+      "schema": "Pengaturan",
+      "description": "Pengaturan rekening dan konfigurasi studio"
+    },
+    "/owners/{ownerId}/arsip_kompresi/{arsipId}": {
+      "schema": "ArsipKompresi",
+      "description": "Arsip jadwal lama terkompresi"
+    },
     "/tim_studio/{staffId}": {
       "schema": "Staff",
       "description": "Indeks peran staf untuk otorisasi cepat"

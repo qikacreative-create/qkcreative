@@ -1,6 +1,6 @@
 {
-  "name": "Remix Hiduptenangdimalati",
-  "description": "Imported from GitHub: hiduptenangdimalati-bit/Hiduptenangdimalati",
+  "name": "Kafela's Agenda",
+  "description": "Aplikasi manajemen jadwal agenda studio, booking web, struk pembayaran, dan keuangan vendor.",
   "requestFramePermissions": [],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"

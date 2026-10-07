@@ -34,6 +34,50 @@ export function waKeEmailSistem(waInput: string): string {
   return `${waBersih}@kafelaagenda.com`;
 }
 
+export function bersihkanSlugBrand(str: string): string {
+  return (str || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '');
+}
+
+export function buatLoginIdKru(username: string, namaBrand: string): string {
+  const u = (username || '').toLowerCase().replace(/[^a-z0-9_]/g, '');
+  const b = bersihkanSlugBrand(namaBrand);
+  if (!b) return u;
+  return `${u}.${b}`;
+}
+export const buatLoginIdCrew = buatLoginIdKru;
+
+export function idKeEmailSistem(idInput: string): string {
+  const trimmed = (idInput || '').trim().toLowerCase();
+
+  // Jika sudah berupa email asli (@ dan domain .)
+  if (trimmed.includes('@') && trimmed.includes('.')) {
+    return trimmed;
+  }
+
+  // Jika berupa nomor WhatsApp / nomor telepon
+  const numericOnly = trimmed.replace(/[^0-9]/g, '');
+  const isPhoneNumber =
+    numericOnly.length >= 9 &&
+    (trimmed.startsWith('0') ||
+      trimmed.startsWith('62') ||
+      trimmed.startsWith('+62') ||
+      trimmed.startsWith('8'));
+
+  if (isPhoneNumber) {
+    let waBersih = numericOnly;
+    if (waBersih.startsWith('62')) {
+      waBersih = '0' + waBersih.substring(2);
+    }
+    return `${waBersih}@kafelaagenda.com`;
+  }
+
+  // Jika berupa Username crew/admin dengan format username.namabrand atau username@namabrand
+  const normalizedId = trimmed.replace('@', '.').replace(/[^a-z0-9._-]/g, '');
+  return `${normalizedId}@kafelaagenda.com`;
+}
+
 export function formatTanggalIndo(ms: number, pendek = false): string {
   if (!ms || ms <= 0) return '-';
   const d = new Date(ms);

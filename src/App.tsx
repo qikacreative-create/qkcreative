@@ -406,6 +406,9 @@ export default function App() {
     const unsub = listenFirebaseAuthState((fbSession) => {
       if (fbSession) {
         handleLoginFirebaseSuccess(fbSession, true);
+      } else {
+        // Jika tidak ada sesi Firebase Auth aktif dan mode sebelumnya FIREBASE, kembalikan ke layar login
+        setSessionMode((prev) => (prev === 'FIREBASE' ? null : prev));
       }
       setIsAuthChecking(false);
     });
@@ -443,24 +446,31 @@ export default function App() {
   // Live Sync Otomatis khusus Paket Ultimate (pada mode Firebase Asli)
   useEffect(() => {
     if (
+      isAuthChecking ||
       sessionMode !== 'FIREBASE' ||
       owner.paketAktif !== 'Ultimate' ||
       quotaStats.isIdlePaused
     ) {
       return;
     }
-    const unsub = subscribeLiveJadwalUltimate(targetOwnerId, (liveList, readDelta) => {
-      setJadwalAktif(liveList);
-      setQuotaStats((prev) => ({
-        ...prev,
-        readsSession: prev.readsSession + readDelta,
-        lastSyncedAt: Date.now(),
-      }));
-    });
+    const unsub = subscribeLiveJadwalUltimate(
+      targetOwnerId,
+      (liveList, readDelta) => {
+        setJadwalAktif(liveList);
+        setQuotaStats((prev) => ({
+          ...prev,
+          readsSession: prev.readsSession + readDelta,
+          lastSyncedAt: Date.now(),
+        }));
+      },
+      (err) => {
+        console.warn('Live sync snapshot listener error:', err.message);
+      }
+    );
     return () => {
       if (unsub) unsub();
     };
-  }, [sessionMode, owner.paketAktif, targetOwnerId, quotaStats.isIdlePaused]);
+  }, [isAuthChecking, sessionMode, owner.paketAktif, targetOwnerId, quotaStats.isIdlePaused]);
 
   const bumpCacheHit = () => {
     setQuotaStats((prev) => ({
@@ -1096,7 +1106,7 @@ export default function App() {
             >
               <img
                 src={owner.logoBrandUrl || '/logo-kafela.png'}
-                alt="kafela's Agenda"
+                alt={owner.namaBrand || "kafela's Agenda"}
                 className="w-10 h-10 rounded-full object-contain object-center p-0.5 bg-[#FAF9F6] shadow-md border border-white/25 shrink-0"
               />
               <div>
@@ -1107,7 +1117,7 @@ export default function App() {
                     textShadow: '1px 1px 3px rgba(0,0,0,0.8)',
                   }}
                 >
-                  Kafela&apos;s Agenda
+                  {owner.namaBrand || "Kafela's Agenda"}
                 </h1>
                 <p className="text-[11px] text-white/85 leading-tight flex items-center gap-1.5 flex-wrap">
                   <span className="font-bold text-amber-300">
@@ -1262,11 +1272,11 @@ export default function App() {
             <div className="p-5" style={{ backgroundColor: headerBgColor }}>
               <div className="flex items-start justify-between">
                 <div>
-                  <h2 className="font-bold text-white" style={{ fontSize: '20px' }}>
-                    Kafela&apos;s Agenda
+                  <h2 className="font-bold text-white truncate max-w-[200px]" style={{ fontSize: '20px' }}>
+                    {owner.namaBrand || "Kafela's Agenda"}
                   </h2>
-                  <p className="mt-0.5" style={{ fontSize: '13px', color: '#BDC3C7' }}>
-                    Manajemen Jadwal &amp; Kasir
+                  <p className="mt-0.5 text-xs text-white/80 truncate max-w-[200px]">
+                    {owner.jenisUsaha || "Manajemen Jadwal & Kasir"}
                   </p>
                 </div>
                 <button
@@ -1285,12 +1295,12 @@ export default function App() {
                     👤 {activeUserName}
                   </span>
                   <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase bg-amber-500/20 text-amber-300 border border-amber-500/40">
-                    {userRole === 'owner' ? 'Owner' : userRole === 'admin' ? 'Admin' : 'Kru'}
+                    {userRole === 'owner' ? 'Owner' : userRole === 'admin' ? 'Admin' : 'Crew'}
                   </span>
                 </div>
               </div>
 
-              {/* Card Status Paket (Disembunyikan untuk Anggota / Kru) */}
+              {/* Card Status Paket (Disembunyikan untuk Anggota / Crew) */}
               {!isKruAnggota && (
                 <div
                   className="mt-3.5 rounded-[10px] p-3 border border-white/10"
@@ -1423,7 +1433,7 @@ export default function App() {
                     }`}
                   >
                     <Users className="w-4 h-4" />
-                    <span>Kelola Tim &amp; Kru</span>
+                    <span>Kelola Tim &amp; Crew</span>
                   </button>
 
                   <button
@@ -1533,7 +1543,7 @@ export default function App() {
             className="w-[260px] shrink-0 flex flex-col border-r border-white/10 shadow-xl sticky top-[53px] h-[calc(100vh-53px)] overflow-y-auto"
             style={{ backgroundColor: 'rgba(24, 28, 34, 0.94)', color: '#FFFFFF' }}
           >
-            {/* Ringkasan Paket Aktif di Menu Samping PC (Disembunyikan untuk Anggota / Kru) */}
+            {/* Ringkasan Paket Aktif di Menu Samping PC (Disembunyikan untuk Anggota / Crew) */}
             {!isKruAnggota && (
               <div
                 className="p-3.5 border-b border-white/10"
@@ -1660,7 +1670,7 @@ export default function App() {
                     }`}
                   >
                     <Users className="w-4 h-4 shrink-0" />
-                    <span>Kelola Tim &amp; Kru</span>
+                    <span>Kelola Tim &amp; Crew</span>
                   </button>
 
                   <button
@@ -2759,6 +2769,7 @@ export default function App() {
             timList={timList}
             namaBrand={owner.namaBrand}
             ownerUid={targetOwnerId}
+            paketAktif={owner.paketAktif}
             onAddTim={async (anggota) => {
               setTimList((prev) => [...prev, anggota]);
               setQuotaStats((prev) => ({ ...prev, writesSession: prev.writesSession + 1 }));
@@ -2831,7 +2842,7 @@ export default function App() {
               <>
                 <div className="text-center pb-2 border-b border-slate-100">
                   <span className="px-2.5 py-1 rounded-full text-[11px] font-extrabold bg-blue-100 text-blue-700 uppercase">
-                    Detail Penugasan Kru
+                    Detail Penugasan Crew
                   </span>
                   <h3 className="text-lg font-black mt-2 text-slate-900 leading-snug">
                     {aksiJadwalTarget.namaAcara}
@@ -2874,7 +2885,7 @@ export default function App() {
                       {[
                         aksiJadwalTarget.fotoTeknis.jmlShooter && `Shooter: ${aksiJadwalTarget.fotoTeknis.jmlShooter}`,
                         aksiJadwalTarget.fotoTeknis.droneLighting && `Drone/Lighting: ${aksiJadwalTarget.fotoTeknis.droneLighting}`,
-                        aksiJadwalTarget.fotoTeknis.namaKru && `Kru: ${aksiJadwalTarget.fotoTeknis.namaKru}`,
+                        aksiJadwalTarget.fotoTeknis.namaKru && `Crew: ${aksiJadwalTarget.fotoTeknis.namaKru}`,
                       ].filter(Boolean).join(' | ') || 'Tersedia'}
                     </div>
                   )}

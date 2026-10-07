@@ -67,6 +67,8 @@ export interface PaketLayanan {
 export interface AnggotaTimModel {
   uid: string;
   nama: string;
+  username?: string;
+  loginId?: string;
   noWhatsApp: string;
   password?: string;
   role: 'admin' | 'anggota';

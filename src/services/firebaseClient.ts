@@ -33,7 +33,12 @@ import {
   RekeningModel,
   UserRoleType,
 } from '../types/kafela';
-import { waKeEmailSistem } from '../utils/formatters';
+import {
+  bersihkanSlugBrand,
+  buatLoginIdKru,
+  idKeEmailSistem,
+  waKeEmailSistem,
+} from '../utils/formatters';
 
 const STORAGE_KEY_FB_CONFIG = 'KAFELA_FIREBASE_CONFIG_V1';
 
@@ -41,12 +46,12 @@ const STORAGE_KEY_FB_CONFIG = 'KAFELA_FIREBASE_CONFIG_V1';
  * Konfigurasi resmi bawaan dari proyek Firebase kafilasuci3 (kfslgnd.web.app)
  */
 export const DEFAULT_KAFELA_FIREBASE_CONFIG: FirebaseCustomConfig = {
-  apiKey: (import.meta as any).env?.VITE_FIREBASE_API_KEY || '',
-  authDomain: (import.meta as any).env?.VITE_FIREBASE_AUTH_DOMAIN || '',
-  projectId: (import.meta as any).env?.VITE_FIREBASE_PROJECT_ID || '',
-  storageBucket: (import.meta as any).env?.VITE_FIREBASE_STORAGE_BUCKET || '',
-  messagingSenderId: (import.meta as any).env?.VITE_FIREBASE_MESSAGING_SENDER_ID || '',
-  appId: (import.meta as any).env?.VITE_FIREBASE_APP_ID || '',
+  apiKey: (import.meta as any).env?.VITE_FIREBASE_API_KEY || 'AIzaSyDD0XFwZMZcKCc1CAoQTWkyXn-SpBd8x1M',
+  authDomain: (import.meta as any).env?.VITE_FIREBASE_AUTH_DOMAIN || 'kafilasuci3.firebaseapp.com',
+  projectId: (import.meta as any).env?.VITE_FIREBASE_PROJECT_ID || 'kafilasuci3',
+  storageBucket: (import.meta as any).env?.VITE_FIREBASE_STORAGE_BUCKET || 'kafilasuci3.firebasestorage.app',
+  messagingSenderId: (import.meta as any).env?.VITE_FIREBASE_MESSAGING_SENDER_ID || '178353487221',
+  appId: (import.meta as any).env?.VITE_FIREBASE_APP_ID || '1:178353487221:web:c97b7f74fa67ed8b13273c',
 };
 
 export function getSavedFirebaseConfig(): FirebaseCustomConfig {
@@ -128,7 +133,7 @@ export function listenFirebaseAuthState(
 }
 
 /**
- * Login via Nomor WhatsApp + Kata Sandi (Persis seperti LoginActivity.kt)
+ * Login via Nomor WhatsApp, Username Brand (cth: nadia.qikacreative), atau Email
  */
 export async function loginFirebaseWithWA(
   waInput: string,
@@ -145,7 +150,7 @@ export async function loginFirebaseWithWA(
   }
 
   const trimmed = waInput.trim();
-  const emailSistem = trimmed.includes('@') ? trimmed : waKeEmailSistem(trimmed);
+  const emailSistem = idKeEmailSistem(trimmed);
   const cred = await signInWithEmailAndPassword(fb.auth, emailSistem, password);
   const userUid = cred.user.uid;
 
@@ -508,13 +513,17 @@ export async function fetchOwnerWorkspaceFromFirebase(
     readsCount += Math.max(1, timSnap.size);
     timList = timSnap.docs.map((d) => {
       const t = d.data();
+      const rawUser = (t.username as string) || (t.nama as string || '').toLowerCase().replace(/[^a-z0-9_]/g, '');
+      const rawLoginId = (t.loginId as string) || (rawUser ? buatLoginIdKru(rawUser, owner.namaBrand) : '');
       return {
         uid: (t.uid as string) || d.id,
         nama: (t.nama as string) || '',
+        username: rawUser,
+        loginId: rawLoginId,
         noWhatsApp: (t.noWhatsApp as string) || '',
         password: (t.password as string) || '',
         role: ((t.role as string) || 'anggota') as 'admin' | 'anggota',
-        posisi: (t.posisi as string) || 'Kru',
+        posisi: (t.posisi as string) || 'Crew',
         namaBrand: (t.namaBrand as string) || owner.namaBrand,
         ownerParentId: (t.ownerParentId as string) || targetOwnerId,
         tanggalDibuat: Number(t.tanggalDibuat) || Date.now(),
@@ -555,19 +564,94 @@ export async function fetchOwnerWorkspaceFromFirebase(
   };
 }
 
+export enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+export interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId?: string | null;
+    email?: string | null;
+    emailVerified?: boolean | null;
+    isAnonymous?: boolean | null;
+    tenantId?: string | null;
+    providerInfo?: {
+      providerId?: string | null;
+      email?: string | null;
+    }[];
+  };
+}
+
+export function handleFirestoreError(
+  error: unknown,
+  operationType: OperationType,
+  path: string | null
+): never {
+  const fb = initKafelaFirebase();
+  const auth = fb?.auth;
+  const user = auth?.currentUser;
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    operationType,
+    path,
+    authInfo: {
+      userId: user?.uid || null,
+      email: user?.email || null,
+      emailVerified: user?.emailVerified || null,
+      isAnonymous: user?.isAnonymous || null,
+      tenantId: user?.tenantId || null,
+      providerInfo:
+        user?.providerData?.map((provider) => ({
+          providerId: provider.providerId,
+          email: provider.email,
+        })) || [],
+    },
+  };
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
+}
+
 export function subscribeLiveJadwalUltimate(
   targetOwnerId: string,
-  onUpdate: (jadwalList: JadwalFotografi[], readDelta: number) => void
+  onUpdate: (jadwalList: JadwalFotografi[], readDelta: number) => void,
+  onError?: (err: Error) => void
 ): (() => void) | null {
   const fb = initKafelaFirebase();
   if (!fb) return null;
 
+  // Pastikan user terotentikasi sebelum membuka listener streaming Firestore
+  if (!fb.auth.currentUser) {
+    return null;
+  }
+
+  const path = `owners/${targetOwnerId}/jadwal`;
   const colRef = collection(fb.db, 'owners', targetOwnerId, 'jadwal');
-  return onSnapshot(colRef, (snap) => {
-    const list = snap.docs.map((d) => mapFirestoreDocToJadwal(d.id, d.data()));
-    const delta = Math.max(1, snap.docChanges().length);
-    onUpdate(list, delta);
-  });
+  return onSnapshot(
+    colRef,
+    (snap) => {
+      const list = snap.docs.map((d) => mapFirestoreDocToJadwal(d.id, d.data()));
+      const delta = Math.max(1, snap.docChanges().length);
+      onUpdate(list, delta);
+    },
+    (error) => {
+      console.warn(`Snapshot listener notice on ${path}:`, error.message);
+      if (onError) {
+        try {
+          handleFirestoreError(error, OperationType.GET, path);
+        } catch (wrapped) {
+          onError(wrapped as Error);
+        }
+      }
+    }
+  );
 }
 
 export async function saveJadwalToFirebase(
@@ -790,29 +874,66 @@ export async function saveTimToFirebase(
   const fb = initKafelaFirebase();
   if (!fb) return;
 
-  let waBersih = anggota.noWhatsApp.replace(/[^0-9]/g, '');
+  const brandSlug = bersihkanSlugBrand(anggota.namaBrand || '');
+  const rawUser = (anggota.username || anggota.nama.split(' ')[0] || 'kru')
+    .toLowerCase()
+    .replace(/[^a-z0-9_]/g, '');
+  const username = rawUser || 'kru';
+  const loginId = anggota.loginId || (brandSlug ? `${username}.${brandSlug}` : username);
+
+  let waBersih = (anggota.noWhatsApp || '').replace(/[^0-9]/g, '');
   if (waBersih.startsWith('62')) {
     waBersih = '0' + waBersih.substring(2);
   }
-  const emailSistem = `${waBersih}@kafelaagenda.com`;
+
   const password = anggota.password || '123456';
+  const emailLoginId = idKeEmailSistem(loginId);
+  const emailWa = waBersih.length >= 9 ? idKeEmailSistem(waBersih) : null;
 
   let userUid = anggota.uid || `staff_${Date.now()}`;
+
+  // 1. Daftarkan akun auth berbasis Login ID (username.namabrand)
   try {
     const savedCfg = getSavedFirebaseConfig() || DEFAULT_KAFELA_FIREBASE_CONFIG;
-    const secondaryApp = initializeApp(savedCfg, `SecondaryStaffApp_${Date.now()}`);
+    const secondaryApp = initializeApp(savedCfg, `StaffApp_${Date.now()}`);
     const secondaryAuth = getAuth(secondaryApp);
-    const cred = await createUserWithEmailAndPassword(secondaryAuth, emailSistem, password);
+    const cred = await createUserWithEmailAndPassword(secondaryAuth, emailLoginId, password);
     userUid = cred.user.uid;
     await signOut(secondaryAuth);
     await deleteApp(secondaryApp);
   } catch (authErr) {
-    console.warn('Akun auth staf mungkin sudah ada atau gagal:', authErr);
+    console.warn('Akun auth loginId staf mungkin sudah ada:', authErr);
   }
 
-  const payload = {
+  // 2. Daftarkan juga akun auth berbasis WA jika nomor WA diisi (agar staf bisa login pakai WA ATAU username.brand)
+  if (emailWa && emailWa !== emailLoginId) {
+    try {
+      const savedCfg = getSavedFirebaseConfig() || DEFAULT_KAFELA_FIREBASE_CONFIG;
+      const secondaryAppWa = initializeApp(savedCfg, `StaffWaApp_${Date.now()}`);
+      const secondaryAuthWa = getAuth(secondaryAppWa);
+      const credWa = await createUserWithEmailAndPassword(secondaryAuthWa, emailWa, password);
+      // Simpan indeks peran untuk UID nomor WA ini di tim_studio
+      const payloadWa: AnggotaTimModel = {
+        ...anggota,
+        uid: credWa.user.uid,
+        username,
+        loginId,
+        noWhatsApp: waBersih,
+        ownerParentId: targetOwnerId,
+      };
+      await setDoc(doc(fb.db, 'tim_studio', credWa.user.uid), payloadWa, { merge: true });
+      await signOut(secondaryAuthWa);
+      await deleteApp(secondaryAppWa);
+    } catch (authWaErr) {
+      console.warn('Akun auth WA staf mungkin sudah ada:', authWaErr);
+    }
+  }
+
+  const payload: AnggotaTimModel = {
     ...anggota,
     uid: userUid,
+    username,
+    loginId,
     noWhatsApp: waBersih,
     ownerParentId: targetOwnerId,
   };

@@ -342,7 +342,7 @@ export function generateDemoWorkspace(preset: ProfessionPresetKey = 'FOTO'): See
       paketList: [
         {
           idPaket: 'wo-1',
-          namaPaket: 'WO On The Day (6 Kru)',
+          namaPaket: 'WO On The Day (6 Crew)',
           hargaPaket: 4500000,
           deskripsiPaket: '1 Project Leader, 5 Crew lapangan, penyusunan buku panduan & teknikal meeting',
           urutan: 0,
@@ -351,7 +351,7 @@ export function generateDemoWorkspace(preset: ProfessionPresetKey = 'FOTO'): See
           idPaket: 'wo-2',
           namaPaket: 'All-In Intimate Wedding Package',
           hargaPaket: 28000000,
-          deskripsiPaket: 'Dekorasi, MUA, Dokumentasi, MC, Sound & Kru WO 8 orang',
+          deskripsiPaket: 'Dekorasi, MUA, Dokumentasi, MC, Sound & Crew WO 8 orang',
           urutan: 1,
         },
       ],
@@ -542,7 +542,10 @@ export function generateDemoWorkspace(preset: ProfessionPresetKey = 'FOTO'): See
       {
         uid: 'tim-admin-01',
         nama: 'Nadia (Kasir Studio)',
+        username: 'nadia',
+        loginId: 'nadia.kafelaphoto',
         noWhatsApp: '081233445566',
+        password: 'admin123',
         role: 'admin',
         posisi: 'Admin Kasir & CS',
         namaBrand: chosen.namaBrand,
@@ -552,9 +555,12 @@ export function generateDemoWorkspace(preset: ProfessionPresetKey = 'FOTO'): See
       {
         uid: 'tim-kru-02',
         nama: 'Rizky Pratama',
+        username: 'rizky',
+        loginId: 'rizky.kafelaphoto',
         noWhatsApp: '085766778899',
+        password: 'kru123',
         role: 'anggota',
-        posisi: 'Fotografer Utama / Kru',
+        posisi: 'Fotografer Utama / Crew',
         namaBrand: chosen.namaBrand,
         ownerParentId: 'demo-owner-kafela-001',
         tanggalDibuat: Date.now() - 5 * 86400000,

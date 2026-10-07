@@ -3,8 +3,14 @@ service cloud.firestore {
   match /databases/{database}/documents {
     
     // --- Helpers ---
-    function isSignedIn() { return request.auth != null; }
+    function isSignedIn() { 
+      return request.auth != null; 
+    }
     
+    function hasTimDoc(uid) {
+      return exists(/databases/$(database)/documents/tim_studio/$(uid));
+    }
+
     function getTimDoc(uid) {
       return get(/databases/$(database)/documents/tim_studio/$(uid));
     }
@@ -14,51 +20,78 @@ service cloud.firestore {
     }
 
     function isAdmin(ownerId) {
-      return isSignedIn() && getTimDoc(request.auth.uid).data.ownerParentId == ownerId && getTimDoc(request.auth.uid).data.role == 'admin';
+      return isSignedIn() && hasTimDoc(request.auth.uid) && getTimDoc(request.auth.uid).data.ownerParentId == ownerId && getTimDoc(request.auth.uid).data.role == 'admin';
     }
 
     function isStaff(ownerId) {
-      return isSignedIn() && getTimDoc(request.auth.uid).data.ownerParentId == ownerId && getTimDoc(request.auth.uid).data.role == 'anggota';
+      return isSignedIn() && hasTimDoc(request.auth.uid) && getTimDoc(request.auth.uid).data.ownerParentId == ownerId && getTimDoc(request.auth.uid).data.role == 'anggota';
     }
 
     // --- Rules ---
 
     // 1. Indeks peran staf (hanya bisa diakses sistem/user terkait)
     match /tim_studio/{uid} {
-      allow read: if isSignedIn() && (request.auth.uid == uid || getTimDoc(request.auth.uid).data.role == 'admin');
-      allow write: if false; // Hanya melalui backend/server
+      allow read: if isSignedIn() && (
+        request.auth.uid == uid || 
+        (hasTimDoc(request.auth.uid) && getTimDoc(request.auth.uid).data.role == 'admin') ||
+        exists(/databases/$(database)/documents/owners/$(request.auth.uid))
+      );
+      allow write: if isSignedIn() && (
+        request.auth.uid == uid ||
+        exists(/databases/$(database)/documents/owners/$(request.auth.uid))
+      );
     }
 
     // 2. Data Owner
     match /owners/{ownerId} {
-      allow read: if isOwner(ownerId) || isAdmin(ownerId) || isStaff(ownerId);
-      allow write: if isOwner(ownerId);
+      // Profil owner (namaBrand, bio, portofolio, logo) dapat dibaca publik untuk booking.html & profil.html
+      allow read: if true;
+      allow create: if isSignedIn() && request.auth.uid == ownerId;
+      allow update, delete: if isOwner(ownerId);
       
-      // Sub-koleksi
+      // Sub-koleksi Tim Studio
       match /tim/{staffId} {
-        allow read: if isOwner(ownerId) || isAdmin(ownerId);
+        allow read: if isOwner(ownerId) || isAdmin(ownerId) || (isSignedIn() && request.auth.uid == staffId);
         allow write: if isOwner(ownerId);
       }
       
+      // Sub-koleksi Jadwal
       match /jadwal/{jadwalId} {
+        // Staff/Admin/Owner dapat membaca semua jadwal
         allow read: if isOwner(ownerId) || isAdmin(ownerId) || isStaff(ownerId);
+        // Pembuatan jadwal: Owner, Admin, atau Formulir Booking Web Publik (sumber == 'WEB')
+        allow create: if isOwner(ownerId) || isAdmin(ownerId) || (
+          request.resource.data.sumber == 'WEB' && 
+          request.resource.data.status == 'Booking Web'
+        );
+        allow update, delete: if isOwner(ownerId) || isAdmin(ownerId);
+      }
+      
+      // Sub-koleksi Paket Layanan (Katalog Layanan Publik)
+      match /paket_layanan/{paketId} {
+        allow read: if true;
+        allow write: if isOwner(ownerId) || isAdmin(ownerId);
+      }
+
+      // Sub-koleksi Galeri Web Portofolio (Publik)
+      match /galeri_web/{galeriId} {
+        allow read: if true;
         allow write: if isOwner(ownerId) || isAdmin(ownerId);
       }
       
-      match /paket_layanan/{paketId} {
-        allow read: if isOwner(ownerId) || isAdmin(ownerId) || isStaff(ownerId);
-        allow write: if isOwner(ownerId);
-      }
-      
+      // Sub-koleksi Pengaturan (Rekening, Konfigurasi Studio)
       match /pengaturan/{pengaturanId} {
-        allow read: if isOwner(ownerId) || isAdmin(ownerId);
-        allow write: if isOwner(ownerId);
+        // Rekening dapat dibaca untuk struk/booking pembayaran
+        allow read: if true;
+        allow write: if isOwner(ownerId) || isAdmin(ownerId);
       }
       
+      // Sub-koleksi Arsip Kompresi
       match /arsip_kompresi/{arsipId} {
         allow read: if isOwner(ownerId) || isAdmin(ownerId);
-        allow write: if isOwner(ownerId);
+        allow write: if isOwner(ownerId) || isAdmin(ownerId);
       }
     }
   }
 }
+

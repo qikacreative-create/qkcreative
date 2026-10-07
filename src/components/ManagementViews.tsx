@@ -36,7 +36,10 @@ import {
   UserRoleType,
 } from '../types/kafela';
 import {
+  bersihkanSlugBrand,
   bersihkanTitik,
+  buatLoginIdKru,
+  formatNomorWA,
   formatRibuanInput,
   formatTanggalIndo,
   keRupiah,
@@ -732,200 +735,589 @@ export const MasterPaketView: React.FC<{
 };
 
 /* ============================================================================
- * 4. KELOLA TIM & KRU STUDIO VIEW (Persis KelolaTimActivity.kt)
+ * 4. KELOLA TIM & CREW STUDIO VIEW (Persis KelolaTimActivity.kt)
  * ========================================================================== */
 export const KelolaTimView: React.FC<{
   timList: AnggotaTimModel[];
   namaBrand: string;
   ownerUid: string;
+  paketAktif?: PaketLanggananTier | string;
   onAddTim: (anggota: AnggotaTimModel) => void;
   onRemoveTim: (uid: string) => void;
-}> = ({ timList, namaBrand, ownerUid, onAddTim, onRemoveTim }) => {
+}> = ({ timList, namaBrand, ownerUid, paketAktif = 'Pro', onAddTim, onRemoveTim }) => {
   const [nama, setNama] = useState('');
-  const [noWa, setNoWa] = useState('');
+  const [identitasLogin, setIdentitasLogin] = useState('');
   const [password, setPassword] = useState('');
   const [posisi, setPosisi] = useState('');
-  const [role, setRole] = useState<'anggota' | 'admin'>('anggota');
+  const [role, setRole] = useState<'anggota' | 'admin'>('admin');
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  // Aturan Kuota Staf Studio:
+  // - Standar: 0 Admin, 0 Crew, 1 Owner (Maks 0 staf tambahan)
+  // - Pro: 1 Admin, 0 Crew, 1 Owner (Maks 1 staf bertipe admin)
+  // - Ultimate: 2 Admin, 10 Crew, 1 Owner (Maks 2 admin dan 10 crew)
+  const normalizedPaket = String(paketAktif || 'Starter').toLowerCase();
+  const isUltimate = normalizedPaket.includes('ultimate');
+  const isPro = normalizedPaket.includes('pro');
+  const isStandar = !isUltimate && !isPro;
+
+  const currentAdmin = timList.filter((t) => t.role === 'admin').length;
+  const currentCrew = timList.filter((t) => t.role === 'anggota').length;
+
+  const maxAdmin = isUltimate ? 2 : isPro ? 1 : 0;
+  const maxCrew = isUltimate ? 10 : 0;
+
+  const isAdminFull = currentAdmin >= maxAdmin;
+  const isCrewFull = currentCrew >= maxCrew;
+
+  const isLimitReached = isStandar
+    ? true
+    : isPro
+    ? currentAdmin >= 1 || timList.length >= 1
+    : isAdminFull && isCrewFull;
+
+  const namaPaketLabel = isUltimate ? 'Ultimate' : isPro ? 'Pro' : 'Standar';
+
+  // Otomatis arahkan role jika kuota salah satu peran penuh
+  React.useEffect(() => {
+    if (isPro) {
+      setRole('admin');
+    } else if (isUltimate) {
+      if (isAdminFull && !isCrewFull) {
+        setRole('anggota');
+      } else if (isCrewFull && !isAdminFull) {
+        setRole('admin');
+      }
+    }
+  }, [isPro, isUltimate, isAdminFull, isCrewFull]);
+
+  // State toast peringatan / informasi & konfirmasi hapus crew
+  const [pendingDeleteTim, setPendingDeleteTim] = useState<AnggotaTimModel | null>(null);
+  const [toastMessage, setToastMessage] = useState<{
+    type: 'warning' | 'info' | 'success';
+    text: string;
+  } | null>(null);
+
+  const brandSlug = bersihkanSlugBrand(namaBrand);
+
+  // Deteksi apakah input berupa nomor WhatsApp (angka murni minimal 9 digit)
+  const numericOnly = identitasLogin.trim().replace(/[^0-9]/g, '');
+  const isInputWa =
+    numericOnly.length >= 9 &&
+    (identitasLogin.trim().startsWith('0') ||
+      identitasLogin.trim().startsWith('62') ||
+      identitasLogin.trim().startsWith('+62') ||
+      identitasLogin.trim().startsWith('8'));
+
+  let previewLoginId = '';
+  if (isInputWa) {
+    let w = numericOnly;
+    if (w.startsWith('62')) w = '0' + w.substring(2);
+    previewLoginId = w;
+  } else {
+    const rawVal = identitasLogin.trim() || (nama.trim().split(' ')[0] || '');
+    const userClean = rawVal.toLowerCase().replace(/[^a-z0-9_]/g, '');
+    previewLoginId = userClean ? buatLoginIdKru(userClean, namaBrand) : '';
+  }
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!nama.trim() || !noWa.trim()) return;
-    let waBersih = noWa.replace(/[^0-9]/g, '');
-    if (waBersih.startsWith('62')) waBersih = '0' + waBersih.substring(2);
+
+    // Validasi aturan paket langganan
+    if (isStandar) {
+      setToastMessage({
+        type: 'warning',
+        text: '⚠️ Paket Standar hanya untuk 1 Owner (0 Admin, 0 Crew). Upgrade ke Pro untuk 1 Admin atau Ultimate untuk 2 Admin & 10 Crew.',
+      });
+      return;
+    }
+
+    if (isPro && isLimitReached) {
+      setToastMessage({
+        type: 'warning',
+        text: '⚠️ Paket Pro hanya mengizinkan 1 Admin & 1 Owner (0 Crew). Kuota admin telah terisi. Upgrade ke Ultimate untuk 2 Admin & 10 Crew.',
+      });
+      return;
+    }
+
+    if (isUltimate) {
+      if (role === 'admin' && isAdminFull) {
+        setToastMessage({
+          type: 'warning',
+          text: '⚠️ Kuota Admin untuk Paket Ultimate telah penuh (2/2 Admin). Anda masih bisa mendaftarkan Crew (maksimal 10 Crew).',
+        });
+        return;
+      }
+      if (role === 'anggota' && isCrewFull) {
+        setToastMessage({
+          type: 'warning',
+          text: '⚠️ Kuota Crew untuk Paket Ultimate telah penuh (10/10 Crew). Anda masih bisa mendaftarkan Admin (maksimal 2 Admin).',
+        });
+        return;
+      }
+    }
+
+    if (!nama.trim()) return;
+
+    let waBersih = '';
+    let userClean = '';
+    let loginIdFinal = '';
+
+    if (isInputWa) {
+      let w = numericOnly;
+      if (w.startsWith('62')) w = '0' + w.substring(2);
+      waBersih = w;
+      userClean = w;
+      loginIdFinal = w;
+    } else {
+      const rawVal = identitasLogin.trim() || (nama.trim().split(' ')[0] || 'crew');
+      const u = rawVal.toLowerCase().replace(/[^a-z0-9_]/g, '');
+      userClean = u;
+      loginIdFinal = buatLoginIdKru(u, namaBrand);
+    }
+
+    const pass = password.trim() || '123456';
+    const roleFinal = isPro ? 'admin' : role;
 
     onAddTim({
       uid: `tim-${Date.now()}`,
       nama: nama.trim(),
+      username: userClean,
+      loginId: loginIdFinal,
       noWhatsApp: waBersih,
-      password: password.trim() || '123456',
-      role,
-      posisi: posisi.trim() || (role === 'admin' ? 'Admin Operasional' : 'Kru Studio'),
+      password: pass,
+      role: roleFinal,
+      posisi: posisi.trim() || (roleFinal === 'admin' ? 'Admin Operasional' : 'Crew Studio'),
       namaBrand,
       ownerParentId: ownerUid,
       tanggalDibuat: Date.now(),
     });
+
+    setToastMessage({
+      type: 'success',
+      text: `✓ Staf "${nama.trim()}" (${roleFinal === 'admin' ? 'Admin' : 'Crew'}) berhasil didaftarkan! ID Login: ${loginIdFinal}`,
+    });
+    setTimeout(() => setToastMessage(null), 4000);
+
     setNama('');
-    setNoWa('');
+    setIdentitasLogin('');
     setPassword('');
     setPosisi('');
   };
 
+  const handleCopyId = (idToCopy: string) => {
+    navigator.clipboard.writeText(idToCopy);
+    setCopiedId(idToCopy);
+    setTimeout(() => setCopiedId(null), 2000);
+  };
+
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-      <div className="lg:col-span-7 rounded-xl bg-slate-900 border border-slate-800 overflow-hidden">
-        <div className="px-5 py-4 border-b border-slate-800 bg-slate-950 flex items-center justify-between">
-          <div>
-            <h2 className="text-base font-bold text-white">
-              Daftar Staf & Kru Studio ({timList.length} Orang)
-            </h2>
-            <p className="text-xs text-slate-400">
-              Admin bisa kelola jadwal & kasir. Anggota kru hanya bisa melihat kalender & lokasi tanpa
-              melihat harga.
-            </p>
+    <div className="space-y-4">
+      {/* Toast Peringatan / Sukses */}
+      {toastMessage && (
+        <div
+          className={`rounded-xl p-3 text-xs font-semibold flex items-center justify-between gap-3 shadow-lg border transition-all ${
+            toastMessage.type === 'warning'
+              ? 'bg-amber-950/95 border-amber-500 text-amber-200'
+              : toastMessage.type === 'info'
+              ? 'bg-sky-950/95 border-sky-500 text-sky-200'
+              : 'bg-emerald-950/95 border-emerald-500 text-emerald-200'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            <Shield className="w-4 h-4 shrink-0" />
+            <span className="leading-snug">{toastMessage.text}</span>
           </div>
-          <Users className="w-5 h-5 text-sky-400" />
+          <button
+            type="button"
+            onClick={() => setToastMessage(null)}
+            className="p-1 hover:bg-white/10 rounded cursor-pointer text-slate-400 hover:text-white shrink-0"
+            title="Tutup"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {/* Modal / Card Peringatan Konfirmasi Hapus Crew */}
+      {pendingDeleteTim && (
+        <div className="rounded-xl bg-rose-950/90 border-2 border-rose-500/70 p-4 shadow-2xl text-xs space-y-3">
+          <div className="flex items-start gap-3">
+            <div className="p-2 rounded-lg bg-rose-500/20 text-rose-300 shrink-0">
+              <Shield className="w-5 h-5 text-rose-400" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <h4 className="font-bold text-white text-sm">
+                ⚠️ Peringatan: Hapus Akses Anggota Tim / Crew
+              </h4>
+              <p className="text-rose-200 mt-1 leading-relaxed">
+                Yakin ingin menghapus akses <strong className="text-white underline">{pendingDeleteTim.nama}</strong> ({pendingDeleteTim.posisi})? ID login{' '}
+                <code className="bg-black/60 px-1.5 py-0.5 rounded text-amber-300 font-mono">
+                  {pendingDeleteTim.loginId || buatLoginIdKru(pendingDeleteTim.username || pendingDeleteTim.nama, namaBrand)}
+                </code>{' '}
+                akan langsung dicabut.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-rose-500/25">
+            <button
+              type="button"
+              onClick={() => {
+                const batalNama = pendingDeleteTim.nama;
+                setPendingDeleteTim(null);
+                setToastMessage({
+                  type: 'info',
+                  text: `Penghapusan akses crew "${batalNama}" dibatalkan.`,
+                });
+                setTimeout(() => setToastMessage(null), 2500);
+              }}
+              className="px-3.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold cursor-pointer"
+            >
+              Batal
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const namaTerhapus = pendingDeleteTim.nama;
+                onRemoveTim(pendingDeleteTim.uid);
+                setPendingDeleteTim(null);
+                setToastMessage({
+                  type: 'success',
+                  text: `✓ Akses crew "${namaTerhapus}" berhasil dihapus.`,
+                });
+                setTimeout(() => setToastMessage(null), 3500);
+              }}
+              className="px-4 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-bold cursor-pointer flex items-center gap-1.5 shadow-lg shadow-rose-900/40"
+            >
+              <Trash2 className="w-4 h-4" />
+              <span>Konfirmasi Hapus</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+        <div className="lg:col-span-7 rounded-xl bg-slate-900 border border-slate-800 overflow-hidden">
+          <div className="px-5 py-4 border-b border-slate-800 bg-slate-950 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h2 className="text-base font-bold text-white">
+                Daftar Staf &amp; Crew Studio ({timList.length} Orang)
+              </h2>
+              <span
+                className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase border ${
+                  isStandar
+                    ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                    : isPro
+                    ? currentAdmin >= 1
+                      ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+                      : 'bg-purple-500/20 text-purple-300 border-purple-500/40'
+                    : isLimitReached
+                    ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+                    : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                }`}
+              >
+                {isStandar
+                  ? 'Standar: 1 Owner (0 Admin, 0 Crew)'
+                  : isPro
+                  ? `Pro: ${currentAdmin}/1 Admin (0 Crew)${currentAdmin >= 1 ? ' • Penuh' : ''}`
+                  : `Ultimate: ${currentAdmin}/2 Admin • ${currentCrew}/10 Crew`}
+              </span>
+            </div>
+            <Users className="w-5 h-5 text-sky-400 shrink-0" />
+          </div>
+
+          {timList.length === 0 ? (
+            <div className="p-8 text-center text-xs text-slate-500">
+              {isStandar
+                ? 'Paket Standar khusus 1 Owner (tidak ada staf). Upgrade ke Pro untuk 1 Admin atau Ultimate untuk 2 Admin & 10 Crew.'
+                : 'Belum ada staf atau crew yang didaftarkan.'}
+            </div>
+          ) : (
+            <div className="divide-y divide-slate-800">
+              {timList.map((item) => {
+                const itemLoginId = item.loginId || buatLoginIdKru(item.username || item.nama, namaBrand);
+                return (
+                  <div
+                    key={item.uid}
+                    className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-800/40 transition-colors"
+                  >
+                    <div className="space-y-1.5 flex-1 min-w-0">
+                      <div className="flex items-center gap-2 text-xs flex-wrap">
+                        <span className="text-sm font-bold text-white">{item.nama}</span>
+                        <span className="text-slate-500">·</span>
+                        <span
+                          className={
+                            item.role === 'admin'
+                              ? 'text-purple-400 font-bold bg-purple-500/10 px-2 py-0.5 rounded border border-purple-500/30'
+                              : 'text-sky-400 font-bold bg-sky-500/10 px-2 py-0.5 rounded border border-sky-500/30'
+                          }
+                        >
+                          {item.role === 'admin' ? 'ADMIN' : 'CREW'}
+                        </span>
+                        <span className="text-xs text-emerald-400 italic">Posisi: {item.posisi}</span>
+                      </div>
+
+                      <div className="flex items-center gap-2 flex-wrap pt-0.5">
+                        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-slate-950 border border-amber-500/40 text-xs">
+                          <span className="text-slate-400 text-[11px]">ID Login:</span>
+                          <span className="font-mono font-bold text-amber-300">{itemLoginId}</span>
+                          <button
+                            type="button"
+                            onClick={() => handleCopyId(itemLoginId)}
+                            className="text-slate-400 hover:text-white p-0.5 cursor-pointer ml-1"
+                            title="Salin ID Login"
+                          >
+                            {copiedId === itemLoginId ? (
+                              <Check className="w-3.5 h-3.5 text-emerald-400" />
+                            ) : (
+                              <Copy className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+                        </div>
+
+                        {item.password && (
+                          <div className="inline-flex items-center gap-1 px-2 py-1 rounded bg-slate-950 border border-slate-800 text-[11px] text-slate-300 font-mono">
+                            <span className="text-slate-500">Sandi:</span>
+                            <span className="font-bold">{item.password}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPendingDeleteTim(item);
+                          setToastMessage({
+                            type: 'warning',
+                            text: `⚠️ Peringatan: Yakin ingin menghapus akses crew "${item.nama}"? Klik konfirmasi hapus di kotak peringatan di atas.`,
+                          });
+                        }}
+                        className="px-3 py-1.5 rounded-lg border border-rose-500/40 text-rose-400 hover:bg-rose-500/10 text-xs font-semibold cursor-pointer flex items-center gap-1.5 transition-colors"
+                        title="Hapus Akses Crew"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Hapus</span>
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
 
-        {timList.length === 0 ? (
-          <div className="p-8 text-center text-xs text-slate-500">
-            Belum ada anggota tim yang didaftarkan.
-          </div>
-        ) : (
-          <div className="divide-y divide-slate-800">
-            {timList.map((item) => (
-              <div
-                key={item.uid}
-                className="p-4 flex items-center justify-between gap-4 hover:bg-slate-800/40"
+        <div className="lg:col-span-5">
+          <form
+            onSubmit={handleSubmit}
+            className="rounded-xl bg-slate-900 border border-slate-800 p-5 space-y-3.5 text-xs shadow-xl"
+          >
+            <div className="border-b border-slate-800 pb-3 flex items-center justify-between gap-2">
+              <h3 className="text-sm font-bold text-white">
+                Tambah Staf / Crew Baru
+              </h3>
+              <span
+                className={`px-2 py-0.5 rounded text-[10px] font-extrabold ${
+                  isStandar
+                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                    : isPro
+                    ? currentAdmin >= 1
+                      ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
+                      : 'bg-purple-500/20 text-purple-300 border border-purple-500/40'
+                    : isLimitReached
+                    ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
+                    : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                }`}
               >
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2 text-xs">
-                    <span className="text-sm font-bold text-white">{item.nama}</span>
-                    <span className="text-slate-500">·</span>
-                    <span
-                      className={
-                        item.role === 'admin'
-                          ? 'text-purple-400 font-bold'
-                          : 'text-sky-400 font-bold'
-                      }
-                    >
-                      {item.role === 'admin' ? 'ADMIN OPERASIONAL' : 'ANGGOTA / KRU'}
-                    </span>
-                  </div>
-                  <div className="text-xs text-emerald-400 italic">Posisi: {item.posisi}</div>
-                  <div className="text-xs text-slate-400 font-mono">WA Login: {item.noWhatsApp}</div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => onRemoveTim(item.uid)}
-                  className="px-3 py-1.5 rounded-lg border border-rose-500/40 text-rose-400 hover:bg-rose-500/10 text-xs font-semibold cursor-pointer"
-                >
-                  Hapus Akses
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      <div className="lg:col-span-5">
-        <form
-          onSubmit={handleSubmit}
-          className="rounded-xl bg-slate-900 border border-slate-800 p-5 space-y-3.5 text-xs"
-        >
-          <h3 className="text-sm font-bold text-white border-b border-slate-800 pb-3">
-            Tambah Anggota Tim / Kasir Baru
-          </h3>
-
-          <div>
-            <label className="block text-slate-400 mb-1">Nama Lengkap / Panggilan *</label>
-            <input
-              type="text"
-              required
-              placeholder="Cth: Nadia"
-              value={nama}
-              onChange={(e) => setNama(e.target.value)}
-              className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-white"
-            />
-          </div>
-
-          <div>
-            <label className="block text-slate-400 mb-1">Nomor WhatsApp (Untuk Login) *</label>
-            <input
-              type="tel"
-              required
-              placeholder="0812xxxx"
-              value={noWa}
-              onChange={(e) => setNoWa(e.target.value)}
-              className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-white font-mono"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-2.5">
-            <div>
-              <label className="block text-slate-400 mb-1">Kata Sandi (Min 6)</label>
-              <input
-                type="password"
-                placeholder="******"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-white"
-              />
+                {isStandar
+                  ? 'Standar: 0 Staf'
+                  : isPro
+                  ? `${currentAdmin}/1 Admin`
+                  : `${currentAdmin}/2 Admin • ${currentCrew}/10 Crew`}
+              </span>
             </div>
+
+            {/* Peringatan jika kuota paket Standar, Pro, atau Ultimate penuh */}
+            {isStandar && (
+              <div className="rounded-xl bg-amber-950/80 border border-amber-500/50 p-3 text-xs text-amber-200 space-y-1 shadow-md">
+                <div className="flex items-center gap-2 font-bold text-amber-300">
+                  <Shield className="w-4 h-4 text-amber-400 shrink-0" />
+                  <span>Paket Standar: 1 Owner (0 Admin, 0 Crew)</span>
+                </div>
+                <div className="text-[11px] leading-relaxed">
+                  Upgrade ke <strong>Pro (1 Admin)</strong> atau <strong>Ultimate (2 Admin, 10 Crew)</strong> untuk mendaftarkan staf.
+                </div>
+              </div>
+            )}
+
+            {isPro && isLimitReached && (
+              <div className="rounded-xl bg-amber-950/80 border border-amber-500/50 p-3 text-xs text-amber-200 space-y-1 shadow-md">
+                <div className="flex items-center gap-2 font-bold text-amber-300">
+                  <Shield className="w-4 h-4 text-amber-400 shrink-0" />
+                  <span>Kuota Paket Pro Penuh (1 Admin, 1 Owner)</span>
+                </div>
+                <div className="text-[11px] leading-relaxed">
+                  Upgrade ke <strong>Ultimate</strong> untuk kuota 2 Admin &amp; 10 Crew.
+                </div>
+              </div>
+            )}
+
+            {isUltimate && isLimitReached && (
+              <div className="rounded-xl bg-amber-950/80 border border-amber-500/50 p-3 text-xs text-amber-200 space-y-1 shadow-md">
+                <div className="flex items-center gap-2 font-bold text-amber-300">
+                  <Shield className="w-4 h-4 text-amber-400 shrink-0" />
+                  <span>Kuota Paket Ultimate Penuh (2 Admin, 10 Crew, 1 Owner)</span>
+                </div>
+                <div className="text-[11px] leading-relaxed">
+                  Semua batas kuota 2 Admin dan 10 Crew untuk studio Anda telah terisi.
+                </div>
+              </div>
+            )}
+
             <div>
-              <label className="block text-slate-400 mb-1">Posisi / Tugas</label>
+              <label className="block text-slate-400 mb-1 font-medium">Nama Lengkap *</label>
               <input
                 type="text"
-                placeholder="Kasir / Fotografer 1"
-                value={posisi}
-                onChange={(e) => setPosisi(e.target.value)}
-                className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-white"
+                required
+                disabled={isLimitReached}
+                placeholder="Cth: Nadia"
+                value={nama}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setNama(val);
+                  if (!identitasLogin) {
+                    const autoSlug = val.trim().split(' ')[0].toLowerCase().replace(/[^a-z0-9_]/g, '');
+                    setIdentitasLogin(autoSlug);
+                  }
+                }}
+                className={`w-full rounded-lg bg-slate-950 border px-3 py-2 text-white ${
+                  isLimitReached ? 'border-slate-800 opacity-60 cursor-not-allowed' : 'border-slate-700'
+                }`}
               />
             </div>
-          </div>
 
-          <div className="space-y-2 pt-1">
-            <label className="block text-slate-300 font-bold">Pilih Hak Akses Pengguna:</label>
-            <label className="flex items-start gap-2.5 p-2.5 rounded-lg bg-slate-950 border border-slate-800 cursor-pointer">
-              <input
-                type="radio"
-                checked={role === 'anggota'}
-                onChange={() => setRole('anggota')}
-                className="mt-0.5 accent-sky-500"
-              />
-              <div>
-                <div className="font-bold text-white">Anggota / Kru (Lihat Kalender Saja)</div>
-                <p className="text-[11px] text-slate-400">
-                  Hanya bisa melihat jadwal, jam &amp; lokasi. Tidak bisa tambah jadwal, melihat
-                  harga paket, maupun masa aktif langganan.
-                </p>
+            {/* Satu input praktis: Username atau WhatsApp (tanpa dua kali kerja) */}
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-slate-400 font-medium">Username atau WhatsApp *</label>
+                {previewLoginId && (
+                  <span className="text-[11px] text-amber-300 font-bold">
+                    ID Login:{' '}
+                    <code className="bg-slate-950 px-1.5 py-0.5 rounded border border-amber-500/30 font-mono">
+                      {previewLoginId}
+                    </code>
+                  </span>
+                )}
               </div>
-            </label>
-
-            <label className="flex items-start gap-2.5 p-2.5 rounded-lg bg-slate-950 border border-slate-800 cursor-pointer">
-              <input
-                type="radio"
-                checked={role === 'admin'}
-                onChange={() => setRole('admin')}
-                className="mt-0.5 accent-purple-500"
-              />
-              <div>
-                <div className="font-bold text-white">Admin Operasional / Kasir (Bisa Kelola)</div>
-                <p className="text-[11px] text-slate-400">
-                  Bisa menambah jadwal, kasir cepat, konfirmasi pesanan web, dan cetak struk.
-                </p>
+              <div className={`flex items-center rounded-lg bg-slate-950 border px-3 py-2 focus-within:border-sky-500 ${
+                isLimitReached ? 'border-slate-800 opacity-60 cursor-not-allowed' : 'border-slate-700'
+              }`}>
+                <input
+                  type="text"
+                  required
+                  disabled={isLimitReached}
+                  placeholder="Cth: nadia atau 0812xxxx"
+                  value={identitasLogin}
+                  onChange={(e) => setIdentitasLogin(e.target.value)}
+                  className="w-full bg-transparent text-white font-mono focus:outline-none disabled:cursor-not-allowed text-xs"
+                />
+                {!isInputWa && (
+                  <span className="text-amber-400/80 text-xs font-mono shrink-0 pl-1">
+                    .{brandSlug || 'namabrand'}
+                  </span>
+                )}
               </div>
-            </label>
-          </div>
+            </div>
 
-          <button
-            type="submit"
-            className="w-full flex items-center justify-center gap-2 rounded-lg bg-sky-600 hover:bg-sky-500 py-2.5 text-xs font-bold text-white cursor-pointer"
-          >
-            <UserPlus className="w-4 h-4" />
-            <span>Daftarkan Anggota Tim</span>
-          </button>
-        </form>
+            <div className="grid grid-cols-2 gap-2.5">
+              <div>
+                <label className="block text-slate-400 mb-1 font-medium">Kata Sandi (Min 6)</label>
+                <input
+                  type="text"
+                  disabled={isLimitReached}
+                  placeholder="123456"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className={`w-full rounded-lg bg-slate-950 border px-3 py-2 text-white font-mono ${
+                    isLimitReached ? 'border-slate-800 opacity-60 cursor-not-allowed' : 'border-slate-700'
+                  }`}
+                />
+              </div>
+              <div>
+                <label className="block text-slate-400 mb-1 font-medium">Posisi / Tugas</label>
+                <input
+                  type="text"
+                  disabled={isLimitReached}
+                  placeholder="Kasir / Fotografer"
+                  value={posisi}
+                  onChange={(e) => setPosisi(e.target.value)}
+                  className={`w-full rounded-lg bg-slate-950 border px-3 py-2 text-white ${
+                    isLimitReached ? 'border-slate-800 opacity-60 cursor-not-allowed' : 'border-slate-700'
+                  }`}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1.5 pt-1">
+              <label className="block text-slate-300 font-bold">Hak Akses:</label>
+              <div className="grid grid-cols-2 gap-2">
+                <label className={`flex items-center gap-2 p-2.5 rounded-lg bg-slate-950 border border-slate-800 ${
+                  isLimitReached || isPro || (isUltimate && isCrewFull) ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
+                }`}>
+                  <input
+                    type="radio"
+                    disabled={isLimitReached || isPro || (isUltimate && isCrewFull)}
+                    checked={role === 'anggota'}
+                    onChange={() => setRole('anggota')}
+                    className="accent-sky-500"
+                  />
+                  <span className="font-bold text-white text-xs">
+                    Crew {isUltimate ? `(${currentCrew}/10)` : ''}
+                  </span>
+                </label>
+
+                <label className={`flex items-center gap-2 p-2.5 rounded-lg bg-slate-950 border border-slate-800 ${
+                  isLimitReached || (isUltimate && isAdminFull) ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
+                }`}>
+                  <input
+                    type="radio"
+                    disabled={isLimitReached || (isUltimate && isAdminFull)}
+                    checked={role === 'admin'}
+                    onChange={() => setRole('admin')}
+                    className="accent-purple-500"
+                  />
+                  <span className="font-bold text-white text-xs">
+                    Admin {isUltimate ? `(${currentAdmin}/2)` : isPro ? `(${currentAdmin}/1)` : ''}
+                  </span>
+                </label>
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={isLimitReached}
+              className={`w-full flex items-center justify-center gap-2 rounded-lg py-2.5 text-xs font-bold transition-all shadow-lg ${
+                isLimitReached
+                  ? 'bg-slate-800 text-slate-500 border border-slate-700/80 cursor-not-allowed'
+                  : 'bg-sky-600 hover:bg-sky-500 text-white cursor-pointer shadow-sky-900/20'
+              }`}
+            >
+              <UserPlus className="w-4 h-4" />
+              <span>
+                {isStandar
+                  ? 'Standar: Khusus 1 Owner'
+                  : isPro && isLimitReached
+                  ? 'Batas Pro Penuh (1 Admin, 1 Owner)'
+                  : isPro
+                  ? 'Daftarkan Admin Studio'
+                  : isUltimate && isLimitReached
+                  ? 'Batas Ultimate Penuh (2 Admin, 10 Crew)'
+                  : `Daftarkan ${role === 'admin' ? 'Admin' : 'Crew'} Studio`}
+              </span>
+            </button>
+          </form>
+        </div>
       </div>
     </div>
   );
@@ -2643,21 +3035,21 @@ export const PengaturanStudioView: React.FC<{
               [
                 {
                   tier: 'Starter',
-                  title: 'Paket Starter',
+                  title: 'Paket Starter (Standar)',
                   price: durasiLangganan === 'TAHUNAN' ? 'Rp 158.400 / thn' : 'Rp 16.500 / bln',
-                  desc: 'Maks 100 Jadwal/Bulan • 1 Akun Utama (Owner) • Khusus Aplikasi HP',
+                  desc: '1 Owner (0 Admin, 0 Crew) • Maks 100 Jadwal/Bulan • Khusus Aplikasi HP',
                 },
                 {
                   tier: 'Pro',
                   title: 'Paket Pro (Terlaris)',
                   price: durasiLangganan === 'TAHUNAN' ? 'Rp 432.000 / thn' : 'Rp 45.000 / bln',
-                  desc: 'Maks 300 Jadwal/Bulan • Akses Kasir PC & HP • Link Website Pribadi',
+                  desc: '1 Owner & 1 Admin (0 Crew) • Maks 300 Jadwal/Bulan • Akses Kasir PC & HP • Link Website Pribadi',
                 },
                 {
                   tier: 'Ultimate',
                   title: 'Paket Ultimate',
                   price: durasiLangganan === 'TAHUNAN' ? 'Rp 1.334.400 / thn' : 'Rp 139.000 / bln',
-                  desc: 'Jadwal Unlimited • Kasir PC Live Sync Real-time • Fitur Tim (Owner, Admin & Kru)',
+                  desc: '1 Owner, 2 Admin & 10 Crew • Jadwal Unlimited • Kasir PC Live Sync Real-time • Fitur Tim Lengkap',
                 },
               ] as { tier: PaketLanggananTier; title: string; price: string; desc: string }[]
             ).map((p) => {

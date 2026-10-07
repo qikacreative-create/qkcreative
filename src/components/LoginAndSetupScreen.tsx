@@ -56,12 +56,44 @@ export const LoginAndSetupScreen: React.FC<LoginAndSetupScreenProps> = ({
   const [fbConfig, setFbConfig] = useState<FirebaseCustomConfig>(savedCfg);
   const [fbSavedToast, setFbSavedToast] = useState(false);
 
+  const formatAuthError = (err: unknown, isSignup = false): string => {
+    const raw = err instanceof Error ? err.message : String(err);
+    const m = raw.toLowerCase();
+    if (m.includes('invalid-credential') || m.includes('user-not-found') || m.includes('wrong-password')) {
+      return isSignup
+        ? 'Format data pendaftaran tidak valid.'
+        : 'Nomor WhatsApp atau Kata Sandi salah. Jika belum pernah mendaftar di database Firebase ini, silakan klik tombol "Daftar di sini" di bawah atau coba "Mode Simulasi (Demo)".';
+    }
+    if (m.includes('email-already-in-use')) {
+      return 'Nomor WhatsApp ini sudah terdaftar. Silakan gunakan menu "Masuk (Login)" atau masukkan kata sandi yang sesuai.';
+    }
+    if (m.includes('weak-password')) {
+      return 'Kata sandi terlalu pendek. Minimal 6 karakter.';
+    }
+    if (m.includes('network-request-failed')) {
+      return 'Gagal terhubung ke Firebase. Periksa jaringan internet Anda atau gunakan Mode Simulasi.';
+    }
+    if (m.includes('too-many-requests')) {
+      return 'Terlalu banyak percobaan gagal. Silakan tunggu beberapa saat atau coba Mode Simulasi.';
+    }
+    if (m.includes('popup-closed-by-user')) {
+      return 'Jendela popup Google ditutup. Silakan coba lagi atau gunakan login nomor WhatsApp.';
+    }
+    if (m.includes('unauthorized-domain') || m.includes('not authorized')) {
+      return 'Domain preview belum didaftarkan di Firebase Console -> Authentication -> Authorized Domains. Silakan masuk menggunakan Nomor WhatsApp & Sandi, atau masuk dengan Mode Simulasi.';
+    }
+    if (m.includes('belum siap')) {
+      return 'Konfigurasi Firebase belum siap. Silakan klik ikon gerigi di kanan atas untuk mengecek konfigurasi atau gunakan Mode Simulasi.';
+    }
+    return raw;
+  };
+
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
 
     if (!waInput.trim() || !password.trim()) {
-      setErrorMsg('Harap isi Nomor WhatsApp dan Kata Sandi!');
+      setErrorMsg('Harap isi Nomor WhatsApp atau ID Login dan Kata Sandi!');
       return;
     }
     if (!setujuSyarat) {
@@ -74,8 +106,7 @@ export const LoginAndSetupScreen: React.FC<LoginAndSetupScreenProps> = ({
       const session = await loginFirebaseWithWA(waInput, password);
       onLoginFirebaseSuccess(session);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Gagal masuk ke sistem';
-      setErrorMsg(`Login Gagal: Pastikan Nomor WA & Sandi benar. (${msg})`);
+      setErrorMsg(formatAuthError(err, false));
     } finally {
       setLoading(false);
     }
@@ -107,8 +138,7 @@ export const LoginAndSetupScreen: React.FC<LoginAndSetupScreenProps> = ({
       const session = await signupFirebaseWithWA(namaOwner, namaBrand, waInput, password);
       onLoginFirebaseSuccess(session);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Gagal mendaftarkan akun';
-      setErrorMsg(`Gagal Daftar: ${msg}`);
+      setErrorMsg(formatAuthError(err, true));
     } finally {
       setLoading(false);
     }
@@ -126,8 +156,7 @@ export const LoginAndSetupScreen: React.FC<LoginAndSetupScreenProps> = ({
       const session = await loginFirebaseWithGoogle();
       onLoginFirebaseSuccess(session);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Gagal login Google';
-      setErrorMsg(`Login Google Gagal: ${msg}`);
+      setErrorMsg(formatAuthError(err, false));
     } finally {
       setLoading(false);
     }
@@ -187,19 +216,19 @@ export const LoginAndSetupScreen: React.FC<LoginAndSetupScreenProps> = ({
             )}
 
             <form onSubmit={handleLoginSubmit} className="space-y-4">
-              {/* Input Nomor WhatsApp */}
+              {/* Input Nomor WhatsApp / Username ID */}
               <div>
                 <label className="block text-xs mb-1.5" style={{ color: '#AAAAAA' }}>
-                  Nomor WhatsApp
+                  Username atau Nomor WhatsApp
                 </label>
                 <div
                   className="flex items-center rounded-lg border px-3.5 py-3 focus-within:border-[#64B5F6] transition-colors"
                   style={{ backgroundColor: '#161616', borderColor: '#3A3A3A' }}
                 >
-                  <Phone className="w-4 h-4 mr-3 shrink-0" style={{ color: '#888888' }} />
+                  <User className="w-4 h-4 mr-3 shrink-0" style={{ color: '#888888' }} />
                   <input
-                    type="tel"
-                    placeholder="Contoh: 081234567890"
+                    type="text"
+                    placeholder="Username atau Nomor WhatsApp"
                     value={waInput}
                     onChange={(e) => setWaInput(e.target.value)}
                     className="w-full bg-transparent text-sm text-white placeholder-[#666666] focus:outline-none"
@@ -298,8 +327,23 @@ export const LoginAndSetupScreen: React.FC<LoginAndSetupScreenProps> = ({
                 Masuk / Daftar Cepat via Google
               </button>
 
+              {/* Tombol Masuk Mode Demo / Simulasi (Langsung Coba Tanpa Login) */}
+              <button
+                type="button"
+                onClick={() => setShowDemoPickerModal(true)}
+                className="w-full font-bold text-amber-300 transition-all hover:bg-amber-500/20 cursor-pointer border border-amber-500/40 rounded-[30px] flex items-center justify-center gap-2"
+                style={{
+                  height: '48px',
+                  backgroundColor: 'rgba(245, 158, 11, 0.12)',
+                  fontSize: '14px',
+                }}
+              >
+                <Play className="w-4 h-4 fill-amber-300" />
+                <span>Masuk Mode Simulasi (Coba Langsung)</span>
+              </button>
+
               {/* Belum punya akun? Daftar di sini */}
-              <div className="text-center pt-3">
+              <div className="text-center pt-2">
                 <button
                   type="button"
                   onClick={() => {
@@ -617,6 +661,190 @@ export const LoginAndSetupScreen: React.FC<LoginAndSetupScreenProps> = ({
                 Saya Setuju
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL PILIH PRESET MODE SIMULASI */}
+      {showDemoPickerModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
+          <div
+            className="w-full max-w-md rounded-2xl p-6 text-white space-y-4 border shadow-2xl"
+            style={{ backgroundColor: '#1E1E1E', borderColor: '#333333' }}
+          >
+            <div className="flex items-center justify-between border-b border-[#333333] pb-3">
+              <div>
+                <h3 className="text-base font-bold text-amber-300">Mode Simulasi (Demo Langsung)</h3>
+                <p className="text-xs text-[#AAAAAA] mt-0.5">Pilih jenis usaha untuk data contoh instan:</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowDemoPickerModal(false)}
+                className="p-1 rounded-lg text-[#AAAAAA] hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-2.5">
+              {[
+                {
+                  key: 'FOTO' as ProfessionPresetKey,
+                  nama: 'Fotografer & Studio Foto',
+                  brand: 'Kafela Creative (Iqbal S.)',
+                  desc: 'Paket Wedding, Wisuda, Prewedding, Struk Thermal, Kalender',
+                },
+                {
+                  key: 'MUA' as ProfessionPresetKey,
+                  nama: 'Makeup Artist (MUA)',
+                  brand: 'Glow Artistry MUA',
+                  desc: 'Jadwal Rias Pengantin, Wisuda, Booking DP, Kasir Cepat',
+                },
+                {
+                  key: 'WO' as ProfessionPresetKey,
+                  nama: 'Wedding & Event Organizer',
+                  brand: 'Harmoni Wedding Organizer',
+                  desc: 'Manajemen Rundown Acara, Crew Lapangan, Rekening Bank',
+                },
+                {
+                  key: 'DEKORASI' as ProfessionPresetKey,
+                  nama: 'Vendor Dekorasi & Perlengkapan',
+                  brand: 'Raya Decoration',
+                  desc: 'Jadwal Bongkar-Pasang Pelaminan, Invoice Struk & Tim',
+                },
+              ].map((item) => (
+                <button
+                  key={item.key}
+                  type="button"
+                  onClick={() => {
+                    setShowDemoPickerModal(false);
+                    onStartDemo(item.key);
+                  }}
+                  className="w-full text-left p-3.5 rounded-xl border border-[#333333] bg-[#252525] hover:bg-[#2F2F2F] hover:border-amber-500/50 transition-all cursor-pointer flex flex-col gap-1 group"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-sm text-white group-hover:text-amber-300 transition-colors">
+                      {item.nama}
+                    </span>
+                    <span className="text-[11px] px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 font-semibold">
+                      PILIH
+                    </span>
+                  </div>
+                  <span className="text-xs text-[#CCCCCC] font-medium">{item.brand}</span>
+                  <span className="text-[11px] text-[#888888]">{item.desc}</span>
+                </button>
+              ))}
+            </div>
+
+            <div className="pt-2 border-t border-[#333333] flex justify-end">
+              <button
+                type="button"
+                onClick={() => setShowDemoPickerModal(false)}
+                className="px-4 py-2 rounded-lg text-xs text-[#AAAAAA] hover:bg-[#2C2C2C] cursor-pointer"
+              >
+                Batal
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL CONFIG FIREBASE */}
+      {showFbConfigModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
+          <div
+            className="w-full max-w-lg rounded-2xl p-6 text-white space-y-4 border shadow-2xl"
+            style={{ backgroundColor: '#1E1E1E', borderColor: '#333333' }}
+          >
+            <div className="flex items-center justify-between border-b border-[#333333] pb-3">
+              <div>
+                <h3 className="text-base font-bold">Konfigurasi Database Firebase</h3>
+                <p className="text-xs text-[#AAAAAA] mt-0.5">Konfigurasi aktif proyek kafilasuci3</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowFbConfigModal(false)}
+                className="p-1 rounded-lg text-[#AAAAAA] hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveFbConfig} className="space-y-3 text-xs">
+              <div>
+                <label className="block text-[#AAAAAA] mb-1">Project ID</label>
+                <input
+                  type="text"
+                  value={fbConfig.projectId || ''}
+                  onChange={(e) => setFbConfig({ ...fbConfig, projectId: e.target.value })}
+                  className="w-full px-3 py-2 rounded-lg bg-[#161616] border border-[#3A3A3A] text-white focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-[#AAAAAA] mb-1">API Key</label>
+                <input
+                  type="text"
+                  value={fbConfig.apiKey || ''}
+                  onChange={(e) => setFbConfig({ ...fbConfig, apiKey: e.target.value })}
+                  className="w-full px-3 py-2 rounded-lg bg-[#161616] border border-[#3A3A3A] text-white font-mono text-[11px] focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-[#AAAAAA] mb-1">Auth Domain</label>
+                <input
+                  type="text"
+                  value={fbConfig.authDomain || ''}
+                  onChange={(e) => setFbConfig({ ...fbConfig, authDomain: e.target.value })}
+                  className="w-full px-3 py-2 rounded-lg bg-[#161616] border border-[#3A3A3A] text-white focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-[#AAAAAA] mb-1">Storage Bucket</label>
+                <input
+                  type="text"
+                  value={fbConfig.storageBucket || ''}
+                  onChange={(e) => setFbConfig({ ...fbConfig, storageBucket: e.target.value })}
+                  className="w-full px-3 py-2 rounded-lg bg-[#161616] border border-[#3A3A3A] text-white focus:outline-none"
+                />
+              </div>
+
+              {fbSavedToast && (
+                <div className="p-2 rounded bg-green-900/50 text-green-300 text-center font-bold">
+                  Konfigurasi berhasil disimpan!
+                </div>
+              )}
+
+              <div className="flex items-center justify-between pt-3 border-t border-[#333333]">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const def = getSavedFirebaseConfig();
+                    setFbConfig(def);
+                    saveFirebaseConfig(def);
+                    setFbSavedToast(true);
+                    setTimeout(() => setFbSavedToast(false), 1200);
+                  }}
+                  className="text-xs text-sky-400 hover:underline cursor-pointer"
+                >
+                  Reset ke Default
+                </button>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowFbConfigModal(false)}
+                    className="px-3 py-1.5 rounded-lg text-xs text-[#AAAAAA] hover:bg-[#2C2C2C] cursor-pointer"
+                  >
+                    Tutup
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-1.5 rounded-lg bg-[#2980B9] text-xs font-bold text-white hover:bg-sky-600 transition-colors cursor-pointer"
+                  >
+                    Simpan
+                  </button>
+                </div>
+              </div>
+            </form>
           </div>
         </div>
       )}

@@ -676,7 +676,7 @@ export const ScheduleAndCashierForm: React.FC<ScheduleAndCashierFormProps> = ({
                     </div>
                     <input
                       type="text"
-                      placeholder="Nama-nama Kru yang Bertugas"
+                      placeholder="Nama-nama Crew yang Bertugas"
                       value={fotoTeknis.namaKru}
                       onChange={(e) => setFotoTeknis({ ...fotoTeknis, namaKru: e.target.value })}
                       className="w-full rounded bg-slate-950 border border-slate-700 px-2.5 py-1.5 text-white"
