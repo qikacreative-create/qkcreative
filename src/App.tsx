@@ -266,40 +266,7 @@ export default function App() {
   const isCalendarDragging = useRef<boolean>(false);
   const [calendarDragOffset, setCalendarDragOffset] = useState<number>(0);
   const [showHapusSpamBtn, setShowHapusSpamBtn] = useState<boolean>(false);
-  const [isDownloadingZip, setIsDownloadingZip] = useState<boolean>(false);
-
-  const handleDownloadZipSiapUpload = async () => {
-    if (isDownloadingZip) return;
-    setIsDownloadingZip(true);
-    try {
-      const response = await fetch(`/kflsagnd-kasir-pc.zip?v=${Date.now()}`, {
-        cache: 'no-store',
-      });
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-      const arrayBuffer = await response.arrayBuffer();
-      const blob = new Blob([arrayBuffer], { type: 'application/zip' });
-      const blobUrl = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = blobUrl;
-      link.download = 'kflsagnd-kasir-pc.zip';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
-    } catch {
-      const fallbackLink = document.createElement('a');
-      fallbackLink.href = `/kflsagnd-kasir-pc.zip?v=${Date.now()}`;
-      fallbackLink.download = 'kflsagnd-kasir-pc.zip';
-      document.body.appendChild(fallbackLink);
-      fallbackLink.click();
-      document.body.removeChild(fallbackLink);
-    } finally {
-      setIsDownloadingZip(false);
-    }
-  };
-
+ 
   const handleCalendarSwipeStart = (clientX: number, clientY: number) => {
     calendarTouchStartX.current = clientX;
     calendarTouchStartY.current = clientY;
@@ -1385,7 +1352,7 @@ export default function App() {
                     }`}
                   >
                     <Layers className="w-4 h-4" />
-                    <span>Master Paket Layanan</span>
+                    <span>Paket Layanan</span>
                   </button>
 
                   <button
@@ -1488,23 +1455,6 @@ export default function App() {
 
               <div className="px-2 py-1 space-y-2">
                 <PWAInstallButton />
-                {typeof window !== 'undefined' &&
-                  !window.location.hostname.includes('kflsagnd') &&
-                  !window.location.hostname.includes('kafilasuci3') && (
-                    <button
-                      type="button"
-                      onClick={handleDownloadZipSiapUpload}
-                      disabled={isDownloadingZip}
-                      className="flex items-center justify-center gap-1.5 w-full px-3 py-2.5 rounded-xl bg-[#F39C12] hover:opacity-95 disabled:opacity-60 text-slate-950 text-xs font-extrabold shadow-sm transition-opacity cursor-pointer"
-                    >
-                      <Download className="w-4 h-4 shrink-0" />
-                      <span>
-                        {isDownloadingZip
-                          ? 'Mengunduh ZIP Lengkap...'
-                          : 'Download ZIP Lengkap (Dist + Source)'}
-                      </span>
-                    </button>
-                  )}
               </div>
             </div>
 
@@ -1622,7 +1572,7 @@ export default function App() {
                     }`}
                   >
                     <Layers className="w-4 h-4 shrink-0" />
-                    <span>Master Paket Layanan</span>
+                    <span>Paket Layanan</span>
                   </button>
 
                   <button
@@ -1722,23 +1672,6 @@ export default function App() {
 
               <div className="px-1 py-1 space-y-2">
                 <PWAInstallButton />
-                {typeof window !== 'undefined' &&
-                  !window.location.hostname.includes('kflsagnd') &&
-                  !window.location.hostname.includes('kafilasuci3') && (
-                    <button
-                      type="button"
-                      onClick={handleDownloadZipSiapUpload}
-                      disabled={isDownloadingZip}
-                      className="flex items-center justify-center gap-1.5 w-full px-3 py-2 rounded-lg bg-[#F39C12] hover:opacity-95 disabled:opacity-60 text-slate-950 text-[11px] font-extrabold shadow-sm transition-opacity cursor-pointer"
-                    >
-                      <Download className="w-3.5 h-3.5 shrink-0" />
-                      <span>
-                        {isDownloadingZip
-                          ? 'Mengunduh ZIP Lengkap...'
-                          : 'Download ZIP Lengkap (Dist + Source)'}
-                      </span>
-                    </button>
-                  )}
               </div>
             </div>
 

@@ -327,21 +327,6 @@ export const LoginAndSetupScreen: React.FC<LoginAndSetupScreenProps> = ({
                 Masuk / Daftar Cepat via Google
               </button>
 
-              {/* Tombol Masuk Mode Demo / Simulasi (Langsung Coba Tanpa Login) */}
-              <button
-                type="button"
-                onClick={() => setShowDemoPickerModal(true)}
-                className="w-full font-bold text-amber-300 transition-all hover:bg-amber-500/20 cursor-pointer border border-amber-500/40 rounded-[30px] flex items-center justify-center gap-2"
-                style={{
-                  height: '48px',
-                  backgroundColor: 'rgba(245, 158, 11, 0.12)',
-                  fontSize: '14px',
-                }}
-              >
-                <Play className="w-4 h-4 fill-amber-300" />
-                <span>Masuk Mode Simulasi (Coba Langsung)</span>
-              </button>
-
               {/* Belum punya akun? Daftar di sini */}
               <div className="text-center pt-2">
                 <button
@@ -557,48 +542,6 @@ export const LoginAndSetupScreen: React.FC<LoginAndSetupScreenProps> = ({
           </>
         )}
 
-        {/* Bar Install Aplikasi (+ Tombol Download ZIP Khusus Saat Dibuka di AI Studio, Otomatis Hilang di kflsagnd.web.app) */}
-        <div
-          className="mt-6 pt-4 border-t flex flex-wrap items-center justify-center gap-2"
-          style={{ borderColor: '#2E2E2E' }}
-        >
-          <PWAInstallButton compact />
-          {typeof window !== 'undefined' &&
-            !window.location.hostname.includes('kflsagnd') &&
-            !window.location.hostname.includes('kafilasuci3') && (
-              <button
-                type="button"
-                onClick={async () => {
-                  try {
-                    const res = await fetch(`/kflsagnd-kasir-pc.zip?v=${Date.now()}`, {
-                      cache: 'no-store',
-                    });
-                    if (!res.ok) throw new Error('HTTP ' + res.status);
-                    const buf = await res.arrayBuffer();
-                    const url = URL.createObjectURL(new Blob([buf], { type: 'application/zip' }));
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = 'kflsagnd-kasir-pc.zip';
-                    document.body.appendChild(a);
-                    a.click();
-                    document.body.removeChild(a);
-                    setTimeout(() => URL.revokeObjectURL(url), 5000);
-                  } catch {
-                    const a = document.createElement('a');
-                    a.href = `/kflsagnd-kasir-pc.zip?v=${Date.now()}`;
-                    a.download = 'kflsagnd-kasir-pc.zip';
-                    document.body.appendChild(a);
-                    a.click();
-                    document.body.removeChild(a);
-                  }
-                }}
-                className="flex items-center gap-1.5 text-xs font-extrabold px-3 py-1.5 rounded-lg bg-[#F39C12] hover:opacity-95 text-slate-950 shadow-sm transition-opacity cursor-pointer"
-              >
-                <Download className="w-3.5 h-3.5" />
-                <span>Download ZIP Lengkap (Dist + Source)</span>
-              </button>
-            )}
-        </div>
       </div>
 
       <PWAInstallFloatingBanner />
@@ -659,90 +602,6 @@ export const LoginAndSetupScreen: React.FC<LoginAndSetupScreenProps> = ({
                 className="px-4 py-2 rounded-lg bg-[#2980B9] text-xs font-bold text-white cursor-pointer"
               >
                 Saya Setuju
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL PILIH PRESET MODE SIMULASI */}
-      {showDemoPickerModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
-          <div
-            className="w-full max-w-md rounded-2xl p-6 text-white space-y-4 border shadow-2xl"
-            style={{ backgroundColor: '#1E1E1E', borderColor: '#333333' }}
-          >
-            <div className="flex items-center justify-between border-b border-[#333333] pb-3">
-              <div>
-                <h3 className="text-base font-bold text-amber-300">Mode Simulasi (Demo Langsung)</h3>
-                <p className="text-xs text-[#AAAAAA] mt-0.5">Pilih jenis usaha untuk data contoh instan:</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowDemoPickerModal(false)}
-                className="p-1 rounded-lg text-[#AAAAAA] hover:text-white"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="space-y-2.5">
-              {[
-                {
-                  key: 'FOTO' as ProfessionPresetKey,
-                  nama: 'Fotografer & Studio Foto',
-                  brand: 'Kafela Creative (Iqbal S.)',
-                  desc: 'Paket Wedding, Wisuda, Prewedding, Struk Thermal, Kalender',
-                },
-                {
-                  key: 'MUA' as ProfessionPresetKey,
-                  nama: 'Makeup Artist (MUA)',
-                  brand: 'Glow Artistry MUA',
-                  desc: 'Jadwal Rias Pengantin, Wisuda, Booking DP, Kasir Cepat',
-                },
-                {
-                  key: 'WO' as ProfessionPresetKey,
-                  nama: 'Wedding & Event Organizer',
-                  brand: 'Harmoni Wedding Organizer',
-                  desc: 'Manajemen Rundown Acara, Crew Lapangan, Rekening Bank',
-                },
-                {
-                  key: 'DEKORASI' as ProfessionPresetKey,
-                  nama: 'Vendor Dekorasi & Perlengkapan',
-                  brand: 'Raya Decoration',
-                  desc: 'Jadwal Bongkar-Pasang Pelaminan, Invoice Struk & Tim',
-                },
-              ].map((item) => (
-                <button
-                  key={item.key}
-                  type="button"
-                  onClick={() => {
-                    setShowDemoPickerModal(false);
-                    onStartDemo(item.key);
-                  }}
-                  className="w-full text-left p-3.5 rounded-xl border border-[#333333] bg-[#252525] hover:bg-[#2F2F2F] hover:border-amber-500/50 transition-all cursor-pointer flex flex-col gap-1 group"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-sm text-white group-hover:text-amber-300 transition-colors">
-                      {item.nama}
-                    </span>
-                    <span className="text-[11px] px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 font-semibold">
-                      PILIH
-                    </span>
-                  </div>
-                  <span className="text-xs text-[#CCCCCC] font-medium">{item.brand}</span>
-                  <span className="text-[11px] text-[#888888]">{item.desc}</span>
-                </button>
-              ))}
-            </div>
-
-            <div className="pt-2 border-t border-[#333333] flex justify-end">
-              <button
-                type="button"
-                onClick={() => setShowDemoPickerModal(false)}
-                className="px-4 py-2 rounded-lg text-xs text-[#AAAAAA] hover:bg-[#2C2C2C] cursor-pointer"
-              >
-                Batal
               </button>
             </div>
           </div>
