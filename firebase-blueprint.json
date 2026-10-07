@@ -1,0 +1,56 @@
+{
+  "entities": {
+    "Owner": {
+      "title": "Owner",
+      "description": "Profil pemilik studio",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "namaBrand": { "type": "string" },
+        "username": { "type": "string" }
+      },
+      "required": ["uid", "namaBrand"]
+    },
+    "Staff": {
+      "title": "Staff",
+      "description": "Data anggota tim",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "nama": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "anggota"] },
+        "ownerParentId": { "type": "string" }
+      },
+      "required": ["uid", "role", "ownerParentId"]
+    },
+    "Jadwal": {
+      "title": "Jadwal",
+      "description": "Jadwal kegiatan",
+      "type": "object",
+      "properties": {
+        "idJadwal": { "type": "string" },
+        "namaAcara": { "type": "string" },
+        "status": { "type": "string" }
+      },
+      "required": ["idJadwal", "namaAcara"]
+    }
+  },
+  "firestore": {
+    "/owners/{ownerId}": {
+      "schema": "Owner",
+      "description": "Dokumen profil pemilik studio"
+    },
+    "/owners/{ownerId}/tim/{staffId}": {
+      "schema": "Staff",
+      "description": "Data anggota tim milik pemilik studio"
+    },
+    "/owners/{ownerId}/jadwal/{jadwalId}": {
+      "schema": "Jadwal",
+      "description": "Jadwal milik pemilik studio"
+    },
+    "/tim_studio/{staffId}": {
+      "schema": "Staff",
+      "description": "Indeks peran staf untuk otorisasi cepat"
+    }
+  }
+}

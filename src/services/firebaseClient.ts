@@ -21,8 +21,10 @@ import {
   getDocs,
   getFirestore,
   onSnapshot,
+  query,
   setDoc,
   updateDoc,
+  where,
 } from 'firebase/firestore';
 import {
   AnggotaTimModel,
@@ -41,12 +43,12 @@ const STORAGE_KEY_FB_CONFIG = 'KAFELA_FIREBASE_CONFIG_V1';
  * Konfigurasi resmi bawaan dari proyek Firebase kafilasuci3 (kfslgnd.web.app)
  */
 export const DEFAULT_KAFELA_FIREBASE_CONFIG: FirebaseCustomConfig = {
-  apiKey: (import.meta as any).env?.VITE_FIREBASE_API_KEY || 'AIzaSyDD0XFwZMZcKCc1CAoQTWkyXn-SpBd8x1M',
-  authDomain: (import.meta as any).env?.VITE_FIREBASE_AUTH_DOMAIN || 'kafilasuci3.firebaseapp.com',
-  projectId: (import.meta as any).env?.VITE_FIREBASE_PROJECT_ID || 'kafilasuci3',
-  storageBucket: (import.meta as any).env?.VITE_FIREBASE_STORAGE_BUCKET || 'kafilasuci3.firebasestorage.app',
-  messagingSenderId: (import.meta as any).env?.VITE_FIREBASE_MESSAGING_SENDER_ID || '178353487221',
-  appId: (import.meta as any).env?.VITE_FIREBASE_APP_ID || '1:178353487221:web:c97b7f74fa67ed8b13273c',
+  apiKey: (import.meta as any).env?.VITE_FIREBASE_API_KEY || '',
+  authDomain: (import.meta as any).env?.VITE_FIREBASE_AUTH_DOMAIN || '',
+  projectId: (import.meta as any).env?.VITE_FIREBASE_PROJECT_ID || '',
+  storageBucket: (import.meta as any).env?.VITE_FIREBASE_STORAGE_BUCKET || '',
+  messagingSenderId: (import.meta as any).env?.VITE_FIREBASE_MESSAGING_SENDER_ID || '',
+  appId: (import.meta as any).env?.VITE_FIREBASE_APP_ID || '',
 };
 
 export function getSavedFirebaseConfig(): FirebaseCustomConfig {
@@ -329,12 +331,7 @@ export async function resolveUserRoleFromFirestore(
   }
 
   // Fallback jika akun Auth ada namun dokumen belum terbaca
-  return {
-    uid: userUid,
-    targetOwnerId: userUid,
-    role: 'owner',
-    displayName: authUser?.displayName || 'Owner',
-  };
+  throw new Error('Data peran pengguna tidak ditemukan.');
 }
 
 /**
@@ -785,35 +782,53 @@ export async function logoutFirebaseSession(): Promise<void> {
 
 export async function saveTimToFirebase(
   targetOwnerId: string,
-  anggota: AnggotaTimModel
+  anggota: AnggotaTimModel,
+  username: string,
+  slugStudio: string
 ): Promise<void> {
   const fb = initKafelaFirebase();
   if (!fb) return;
 
-  let waBersih = anggota.noWhatsApp.replace(/[^0-9]/g, '');
-  if (waBersih.startsWith('62')) {
-    waBersih = '0' + waBersih.substring(2);
+  // 1. Validasi Unik di Studio yang Sama
+  const timCol = collection(fb.db, 'owners', targetOwnerId, 'tim');
+  const q = query(timCol, where('username', '==', username));
+  const snapshot = await getDocs(q);
+  
+  // Jika sedang update, abaikan dokumen itu sendiri
+  if (!anggota.uid && !snapshot.empty) {
+    throw new Error('Username sudah digunakan di studio ini.');
   }
-  const emailSistem = `${waBersih}@kafelaagenda.com`;
+
+  const emailSistem = `${username}@${slugStudio}.kafelaagenda.com`;
   const password = anggota.password || '123456';
 
-  let userUid = anggota.uid || `staff_${Date.now()}`;
-  try {
-    const savedCfg = getSavedFirebaseConfig() || DEFAULT_KAFELA_FIREBASE_CONFIG;
-    const secondaryApp = initializeApp(savedCfg, `SecondaryStaffApp_${Date.now()}`);
-    const secondaryAuth = getAuth(secondaryApp);
-    const cred = await createUserWithEmailAndPassword(secondaryAuth, emailSistem, password);
-    userUid = cred.user.uid;
-    await signOut(secondaryAuth);
-    await deleteApp(secondaryApp);
-  } catch (authErr) {
-    console.warn('Akun auth staf mungkin sudah ada atau gagal:', authErr);
+  let userUid = anggota.uid;
+  if (!userUid) {
+    // Daftar baru
+    userUid = `staff_${Date.now()}`;
+    try {
+      const savedCfg = getSavedFirebaseConfig() || DEFAULT_KAFELA_FIREBASE_CONFIG;
+      const secondaryApp = initializeApp(savedCfg, `SecondaryStaffApp_${Date.now()}`);
+      const secondaryAuth = getAuth(secondaryApp);
+      const cred = await createUserWithEmailAndPassword(secondaryAuth, emailSistem, password);
+      userUid = cred.user.uid;
+      await signOut(secondaryAuth);
+      await deleteApp(secondaryApp);
+    } catch (authErr) {
+      console.warn('Akun auth staf mungkin sudah ada atau gagal:', authErr);
+      throw new Error('Gagal membuat akun autentikasi.');
+    }
+  } else {
+    // Update existing: Jika password diganti, kita perlu cara untuk update di Firebase Auth.
+    // Catatan: Updating password in Firebase Auth via client SDK requires user re-authentication.
+    // Untuk admin tool, mungkin butuh Firebase Admin SDK di backend.
+    // Di sini kita hanya update data Firestore.
   }
 
   const payload = {
     ...anggota,
     uid: userUid,
-    noWhatsApp: waBersih,
+    username: username,
     ownerParentId: targetOwnerId,
   };
 

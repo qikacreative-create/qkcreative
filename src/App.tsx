@@ -1107,7 +1107,7 @@ export default function App() {
                     textShadow: '1px 1px 3px rgba(0,0,0,0.8)',
                   }}
                 >
-                  Kafela&apos;s Agenda
+                  {owner.namaBrand}
                 </h1>
                 <p className="text-[11px] text-white/85 leading-tight flex items-center gap-1.5 flex-wrap">
                   <span className="font-bold text-amber-300">
