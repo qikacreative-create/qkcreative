@@ -39,6 +39,7 @@ import {
   idKeEmailSistem,
   waKeEmailSistem,
 } from '../utils/formatters';
+import { saveMedia } from './localDb';
 
 const STORAGE_KEY_FB_CONFIG = 'KAFELA_FIREBASE_CONFIG_V1';
 
@@ -443,6 +444,14 @@ export async function fetchOwnerWorkspaceFromFirebase(
     opasitasOverlay: 'D9',
   };
 
+  // Cache Base64 logo & TTD ke IndexedDB secara background jika tersedia
+  if (owner.logoBrandUrl && owner.logoBrandUrl.startsWith('data:')) {
+    saveMedia('logo', owner.logoBrandUrl).catch(() => {});
+  }
+  if (owner.ttdUrl && owner.ttdUrl.startsWith('data:')) {
+    saveMedia('ttd', owner.ttdUrl).catch(() => {});
+  }
+
   // 2. Baca Rekening
   let rekening: RekeningModel = {
     bankUtama: '',
@@ -661,7 +670,8 @@ export async function saveJadwalToFirebase(
   const fb = initKafelaFirebase();
   if (!fb) return;
 
-  const docRef = doc(fb.db, 'owners', targetOwnerId, 'jadwal', jadwal.idJadwal);
+  const docId = (jadwal.idJadwal || `JDW-${Date.now()}`).replace(/\//g, '_');
+  const docRef = doc(fb.db, 'owners', targetOwnerId, 'jadwal', docId);
   const payload: Record<string, unknown> = {
     idJadwal: jadwal.idJadwal,
     namaAcara: jadwal.namaAcara,
@@ -698,7 +708,8 @@ export async function deleteJadwalFromFirebase(
 ): Promise<void> {
   const fb = initKafelaFirebase();
   if (!fb) return;
-  await deleteDoc(doc(fb.db, 'owners', targetOwnerId, 'jadwal', idJadwal));
+  const docId = (idJadwal || '').replace(/\//g, '_');
+  await deleteDoc(doc(fb.db, 'owners', targetOwnerId, 'jadwal', docId));
 }
 
 export async function restoreArsipToFirebase(
@@ -793,7 +804,8 @@ export async function compressOldSchedulesToFirebase(
 
   // Hapus dari koleksi jadwal aktif setelah tersimpan di arsip_kompresi
   for (const j of oldSchedules) {
-    await deleteDoc(doc(fb.db, 'owners', targetOwnerId, 'jadwal', j.idJadwal));
+    const docId = (j.idJadwal || '').replace(/\//g, '_');
+    await deleteDoc(doc(fb.db, 'owners', targetOwnerId, 'jadwal', docId));
   }
 }
 

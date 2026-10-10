@@ -63,6 +63,16 @@ export const LaporanKeuanganView: React.FC<{
   const targetYear = bulanCursor.getFullYear();
   const maxDaysInMonth = new Date(targetYear, targetMonth + 1, 0).getDate();
 
+  const hitungJadwalBulanIni = (jadwal: JadwalFotografi[], month: number, year: number) => {
+    return jadwal.filter((j) => {
+      if ((j.status || '').toLowerCase() === 'dibatalkan') return false;
+      const ms = j.tanggalMulai || j.waktuMulai;
+      if (!ms) return false;
+      const d = new Date(ms);
+      return d.getMonth() === month && d.getFullYear() === year;
+    }).length;
+  };
+
   const jadwalBulanIni = jadwalAktif
     .filter((j) => {
       if ((j.status || '').toLowerCase() === 'dibatalkan') return false;
@@ -115,12 +125,10 @@ export const LaporanKeuanganView: React.FC<{
         <div>
           <h2 className="text-base font-bold text-white">
             {subTab === 'KEUANGAN'
-              ? 'Laporan Keuangan & Omzet Studio'
+              ? 'Laporan Keuangan & Omzet'
               : 'Daftar Klien Belum Lunas (Piutang)'}
           </h2>
-          <p className="text-xs text-slate-400">
-            Dihitung langsung dari memori lokal PC (0 Kuota Read Firebase)
-          </p>
+     
         </div>
 
         <div className="flex items-center gap-1 p-1 rounded-lg bg-slate-950 border border-slate-800">
@@ -153,7 +161,7 @@ export const LaporanKeuanganView: React.FC<{
         <>
           {/* Navigasi Bulan & Ringkasan Kas / Omzet */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="rounded-xl bg-slate-900 border border-slate-800 p-4 flex flex-col justify-between">
+            <div className="rounded-xl bg-slate-900 border border-slate-800 p-2.5 flex flex-col justify-between">
               <span className="text-xs text-slate-400 font-medium">Periode Bulan Laporan</span>
               <div className="flex items-center justify-between mt-2">
                 <button
@@ -195,24 +203,21 @@ export const LaporanKeuanganView: React.FC<{
               </div>
             </div>
 
-            <div className="rounded-xl bg-slate-900 border border-slate-800 p-4">
-              <span className="text-xs text-slate-400">Total Pemasukan Kas (Riil Masuk)</span>
+            <div className="rounded-xl bg-slate-900 border border-slate-800 p-2.5">
+              <span className="text-xs text-slate-400">Total Pemasukan</span>
               <div className="text-xl font-extrabold font-mono text-emerald-400 mt-1.5">
                 {keRupiah(totalPemasukanBulanIni)}
               </div>
-              <span className="text-[11px] text-slate-500">
-                Akumulasi pembayaran Lunas & DP masuk
-              </span>
+           
             </div>
 
-            <div className="rounded-xl bg-slate-900 border border-slate-800 p-4">
+            <div className="rounded-xl bg-slate-900 border border-slate-800 p-2.5">
               <span className="text-xs text-slate-400">Total Omzet Bulan Ini</span>
               <div className="text-xl font-extrabold font-mono text-sky-400 mt-1.5">
                 {keRupiah(totalOmzetBulanIni)}
               </div>
-              <span className="text-[11px] text-slate-500">
-                Total nilai kontrak paket setelah diskon
-              </span>
+              
+          
             </div>
           </div>
 
@@ -432,10 +437,6 @@ export const ArsipPencarianView: React.FC<{
             <h2 className="text-base font-bold text-white">
               Cari Data & Gudang Arsip Kompresi (Smart Archive)
             </h2>
-            <p className="text-xs text-slate-400">
-              Jadwal berusia &gt; 60 hari (2 bulan) dikompresi ke dalam dokumen tunggal{' '}
-              <code>arsip_kompresi</code> agar kuota Read kalender utama tetap super hemat.
-            </p>
           </div>
           <button
             type="button"
@@ -472,16 +473,6 @@ export const ArsipPencarianView: React.FC<{
           />
         </div>
       </div>
-
-      <div className="rounded-xl bg-slate-900 border border-slate-800 overflow-hidden">
-        <div className="px-5 py-3 border-b border-slate-800 bg-slate-950 flex items-center justify-between text-xs">
-          <span className="font-bold text-slate-200">
-            {query.trim()
-              ? `Hasil Pencarian "${query}" (${hasilFilter.length} ditemukan)`
-              : `Isi Gudang Arsip Terkompresi (${jadwalArsip.length} dokumen)`}
-          </span>
-          <span className="text-slate-400">Klik Tarik & Buka untuk mengembalikan ke jadwal aktif</span>
-        </div>
 
         {hasilFilter.length === 0 ? (
           <div className="p-8 text-center text-xs text-slate-500">
@@ -542,7 +533,6 @@ export const ArsipPencarianView: React.FC<{
             ))}
           </div>
         )}
-      </div>
     </div>
   );
 };
@@ -594,7 +584,7 @@ export const MasterPaketView: React.FC<{
       <div className="lg:col-span-7 rounded-xl bg-slate-900 border border-slate-800 overflow-hidden">
         <div className="px-5 py-4 border-b border-slate-800 bg-slate-950 flex items-center justify-between">
           <div>
-            <h2 className="text-base font-bold text-white">Daftar Paket Layanan Studio</h2>
+            <h2 className="text-base font-bold text-white">Daftar Paket Layanan</h2>
             <p className="text-xs text-slate-400">
               Urutan paket di sini otomatis tampil di Kasir PC, Aplikasi HP, dan Form Website
             </p>
@@ -1054,7 +1044,6 @@ export const KelolaTimView: React.FC<{
                         >
                           {item.role === 'admin' ? 'ADMIN' : 'CREW'}
                         </span>
-                        <span className="text-xs text-emerald-400 italic">Posisi: {item.posisi}</span>
                       </div>
 
                       <div className="flex items-center gap-2 flex-wrap pt-0.5">
@@ -1415,7 +1404,7 @@ export const PengaturanStudioView: React.FC<{
   React.useEffect(() => {
     setNamaBrand(owner.namaBrand || '');
     setNamaOwner(owner.namaOwner || '');
-    setJenisUsaha(owner.jenisUsaha || 'Fotografi & Studio Foto');
+    setJenisUsaha(owner.jenisUsaha || '');
     setNoWa(owner.noWhatsApp || '');
     setUsernameWeb(owner.username || owner.uid || 'kafelastudio');
     setTaglineWeb(owner.taglineWeb || '');
@@ -3055,7 +3044,7 @@ export const PengaturanStudioView: React.FC<{
             ).map((p) => {
               const active = owner.paketAktif.toLowerCase() === p.tier.toLowerCase();
               const pesanUpgrade = `Halo Admin Kafela's Agenda, saya *${owner.namaOwner}* dari *${owner.namaBrand}* ingin melakukan Perpanjangan / Upgrade ke *${p.title} (${durasiLangganan})*. Mohon info pembayarannya.`;
-              const waAdminUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(pesanUpgrade)}`;
+              const waAdminUrl = `https://api.whatsapp.com/send?phone=6283132304649&text=${encodeURIComponent(pesanUpgrade)}`;
 
               return (
                 <div

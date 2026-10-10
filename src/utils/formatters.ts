@@ -317,3 +317,119 @@ export function ekstrakTandaTanganDariKertasCanvas(
   cropCtx.drawImage(tempCanvas, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
   return cropCanvas.toDataURL('image/png');
 }
+
+/**
+ * Kompres gambar (Logo Brand / Tanda Tangan Digital) menjadi string Base64 ultra-kompak
+ * dengan batas dimensi maksimal (default 300px) dan format WebP/PNG transparan (~8 - 15 KB).
+ * Gambar ini aman disimpan langsung di dokumen Profil Owner Firestore tanpa Firebase Storage.
+ */
+export async function kompresGambarKeBase64(
+  sumber: HTMLImageElement | HTMLCanvasElement | Blob | string,
+  opsi?: {
+    maxDim?: number;
+    kualitas?: number;
+    forceSquare?: boolean;
+  }
+): Promise<{ base64: string; ukuranKb: number }> {
+  const maxDim = opsi?.maxDim || 300;
+  const kualitas = opsi?.kualitas ?? 0.82;
+  const forceSquare = Boolean(opsi?.forceSquare);
+
+  // 1. Muat ke elemen gambar jika sumber berupa Blob atau URL/Base64 string
+  let imgEl: HTMLImageElement | HTMLCanvasElement;
+  if (typeof sumber === 'string') {
+    imgEl = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = (e) => reject(e);
+      img.src = sumber;
+    });
+  } else if (sumber instanceof Blob) {
+    const objectUrl = URL.createObjectURL(sumber);
+    imgEl = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        URL.revokeObjectURL(objectUrl);
+        resolve(img);
+      };
+      img.onerror = (e) => {
+        URL.revokeObjectURL(objectUrl);
+        reject(e);
+      };
+      img.src = objectUrl;
+    });
+  } else {
+    imgEl = sumber;
+  }
+
+  const srcW = imgEl instanceof HTMLImageElement ? imgEl.naturalWidth || imgEl.width : imgEl.width;
+  const srcH = imgEl instanceof HTMLImageElement ? imgEl.naturalHeight || imgEl.height : imgEl.height;
+
+  if (!srcW || !srcH) {
+    throw new Error('Dimensi gambar tidak valid untuk dikompres.');
+  }
+
+  // 2. Tentukan ukuran target
+  let targetW = srcW;
+  let targetH = srcH;
+  let sx = 0;
+  let sy = 0;
+  let sWidth = srcW;
+  let sHeight = srcH;
+
+  if (forceSquare) {
+    const sisi = Math.min(srcW, srcH);
+    sx = (srcW - sisi) / 2;
+    sy = (srcH - sisi) / 2;
+    sWidth = sisi;
+    sHeight = sisi;
+    targetW = Math.min(maxDim, sisi);
+    targetH = targetW;
+  } else {
+    if (srcW > maxDim || srcH > maxDim) {
+      if (srcW >= srcH) {
+        targetW = maxDim;
+        targetH = Math.round((srcH / srcW) * maxDim);
+      } else {
+        targetH = maxDim;
+        targetW = Math.round((srcW / srcH) * maxDim);
+      }
+    }
+  }
+
+  // 3. Render ke Canvas terkompresi
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, targetW);
+  canvas.height = Math.max(1, targetH);
+  const ctx = canvas.getContext('2d');
+  if (!ctx) {
+    throw new Error('Gagal menginisialisasi 2D Canvas context.');
+  }
+
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(imgEl, sx, sy, sWidth, sHeight, 0, 0, targetW, targetH);
+
+  // 4. Bandingkan WebP vs PNG dan pilih ukuran terkecil yang tetap transparan
+  let bestBase64 = '';
+  try {
+    const webpData = canvas.toDataURL('image/webp', kualitas);
+    if (webpData.startsWith('data:image/webp')) {
+      bestBase64 = webpData;
+    }
+  } catch {}
+
+  const pngData = canvas.toDataURL('image/png');
+  if (!bestBase64 || pngData.length < bestBase64.length) {
+    bestBase64 = pngData;
+  }
+
+  // Hitung perkiraan ukuran dalam KB (Base64 overhead ~4/3)
+  const headerIdx = bestBase64.indexOf(',');
+  const rawBase64 = headerIdx >= 0 ? bestBase64.slice(headerIdx + 1) : bestBase64;
+  const bytes = (rawBase64.length * 3) / 4;
+  const ukuranKb = Math.round((bytes / 1024) * 10) / 10;
+
+  return { base64: bestBase64, ukuranKb };
+}
+

@@ -147,8 +147,15 @@ export interface OwnerProfile {
   templateWaKonfirmasi: string;
   templateWaBookingWeb: string;
   warnaTema: string;
+  gayaLatarNavigasi?: 'SOLID' | 'GLASS' | 'GRADIENT' | 'DARK_ACCENT';
+  opasitasNavigasi?: number;
   isKacaGelap: boolean;
   opasitasOverlay: string;
+  customBackgroundUrl?: string;
+  customBackgroundBlur?: number;
+  customBackgroundOpacity?: number;
+  customBackgroundOverlayType?: 'HITAM' | 'PUTIH';
+  opasitasKartu?: number;
 }
 
 export interface FirebaseCustomConfig {

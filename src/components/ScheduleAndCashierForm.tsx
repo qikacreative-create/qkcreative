@@ -35,6 +35,7 @@ interface ScheduleAndCashierFormProps {
   jenisUsaha?: string;
   editItem?: JadwalFotografi | null;
   existingJadwal?: JadwalFotografi | null;
+  allJadwalList?: JadwalFotografi[];
   onSave: (jadwal: JadwalFotografi, openStrukImmediately: boolean) => void;
   onOpenMasterPaket?: () => void;
   onCancel: () => void;
@@ -46,9 +47,10 @@ export const ScheduleAndCashierForm: React.FC<ScheduleAndCashierFormProps> = ({
   selectedDate,
   defaultDateMillis,
   paketList,
-  jenisUsaha = 'Fotografi & Studio Foto',
+  jenisUsaha = '',
   editItem,
   existingJadwal,
+  allJadwalList = [],
   onSave,
   onOpenMasterPaket,
   onCancel,
@@ -209,11 +211,38 @@ export const ScheduleAndCashierForm: React.FC<ScheduleAndCashierFormProps> = ({
   const tagihanBersih = Math.max(0, hargaTotalKotor - diskon);
   const nominalDp = bersihkanTitik(nominalDpStr);
 
+  const generateSequentialInvoiceId = (targetMillis: number, existingList: JadwalFotografi[] = []): string => {
+    const d = new Date(targetMillis || Date.now());
+    const dd = String(d.getDate()).padStart(2, '0');
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const yy = String(d.getFullYear()).slice(-2);
+    const dateCode = `${dd}${mm}${yy}`; // e.g. 190226
+
+    const matchingOnDate = existingList.filter((j) => {
+      const id = (j.idJadwal || '').toUpperCase();
+      return id.includes(dateCode) || id.startsWith('INV' + dateCode);
+    });
+
+    const nextSeq = matchingOnDate.length + 1;
+    const isOffline = typeof navigator !== 'undefined' && !navigator.onLine;
+
+    if (isOffline) {
+      const letters = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
+      const suffixIndex = Math.max(0, matchingOnDate.length - 1);
+      const suffix = letters[suffixIndex % letters.length];
+      return `inv${dateCode}/${nextSeq}${suffix}`;
+    }
+
+    return `inv${dateCode}/${nextSeq}`;
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!namaKlien.trim() || !paketNama.trim()) {
       return;
     }
+    // TODO: Implement quota check here, passing data from App.tsx via props.
+    // Need to pass owner profile and current jadwal count to this component.
 
     const [yM, mM, dM] = tglMulaiStr.split('-').map(Number);
     const [jamM, minM] = (jamMulaiStr || '09:00').split(':').map(Number);
@@ -248,7 +277,7 @@ export const ScheduleAndCashierForm: React.FC<ScheduleAndCashierFormProps> = ({
         : 0;
 
     const newJadwal: JadwalFotografi = {
-      idJadwal: activeEditItem?.idJadwal || `JDW-${Date.now().toString().slice(-6)}`,
+      idJadwal: activeEditItem?.idJadwal || generateSequentialInvoiceId(waktuMulaiMs, allJadwalList),
       namaAcara: finalAcara,
       namaKlien: namaKlien.trim(),
       namaPic: namaKlien.trim(),

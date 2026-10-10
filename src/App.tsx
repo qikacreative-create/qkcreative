@@ -7,9 +7,11 @@ import {
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  CreditCard,
   Download,
   Edit3,
   Globe,
+  Image as ImageIcon,
   Layers,
   LogOut,
   Menu,
@@ -21,8 +23,10 @@ import {
   RefreshCw,
   Search,
   Settings,
+  Sliders,
   Smartphone,
   Trash2,
+  Upload,
   Users,
   X,
   Zap,
@@ -31,6 +35,7 @@ import {
   AnggotaTimModel,
   JadwalFotografi,
   OwnerProfile,
+  PaketLanggananTier,
   PaketLayanan,
   QuotaStats,
   RekeningModel,
@@ -40,6 +45,7 @@ import {
   ProfessionPresetKey,
   generateDemoWorkspace,
 } from './services/demoDataSeeder';
+import { getLimits } from './utils/subscription';
 import {
   bangunPesanWA,
   bersihkanTitik,
@@ -93,16 +99,38 @@ type ActiveNavTab =
   | 'PENGATURAN';
 
 const LOCAL_CACHE_KEY = 'KAFELA_PC_WORKSPACE_CACHE_V4';
-
 const DAFTAR_WARNA_TEMA_APK = [
-  { nama: 'Biru Abu Elegan (Default)', kode: '#34495E' },
-  { nama: 'Biru Gelap Malam', kode: '#1A252C' },
-  { nama: 'Hijau Hutan', kode: '#1E3F20' },
-  { nama: 'Ungu Royal', kode: '#4A235A' },
-  { nama: 'Merah Maroon', kode: '#641E16' },
-  { nama: 'Coklat Kopi', kode: '#4E342E' },
-  { nama: 'Hitam Pekat', kode: '#121212' },
+  // 1. Klasik & Paling Seimbang (Andalan Utama)
+  { nama: 'Slate Elegan (Default)', kode: '#2C3E50' },
+  { nama: 'Midnight Vercel', kode: '#0F172A' },
+  { nama: 'Titanium Steel', kode: '#334155' },
+  { nama: 'Carbon Gray Modern', kode: '#212529' },
+
+  // 2. Nuansa Biru Eksklusif (Professional & Trust)
+  { nama: 'Royal Sapphire', kode: '#1D4ED8' },
+  { nama: 'Deep Ocean Blue', kode: '#0369A1' },
+  { nama: 'Indigo Midnight', kode: '#312E81' },
+  { nama: 'Cyber Navy', kode: '#1E3A8A' },
+
+  // 3. Nuansa Hijau & Teal Mewah (Fresh & Studio Vibe)
+  { nama: 'Emerald Studio Luxe', kode: '#065F46' },
+  { nama: 'Deep Teal Samudra', kode: '#115E59' },
+  { nama: 'Forest Pine Rich', kode: '#064E3B' },
+  { nama: 'Dark Mint Elegance', kode: '#042F2E' },
+
+  // 4. Nuansa Ungu & Magenta Aesthetic (Creative & Classy)
+  { nama: 'Royal Amethyst', kode: '#4C1D95' },
+  { nama: 'Deep Plum Velvet', kode: '#581C87' },
+  { nama: 'Cosmic Violet', kode: '#3B0764' },
+  { nama: 'Burgundy Wine Rich', kode: '#641E16' },
+
+  // 5. Nuansa Hangat / Warm (Coffee, Bronze & Earthy)
+  { nama: 'Espresso Kopi Mewah', kode: '#4E342E' },
+  { nama: 'Sunset Bronze', kode: '#7C2D12' },
+  { nama: 'Terracotta Bakar', kode: '#9A3412' },
+  { nama: 'Golden Amber Dark', kode: '#78350F' },
 ];
+
 
 export default function App() {
   // Mode Sesi: dipulihkan otomatis dari LocalStorage agar saat Reload tidak terlempar ke Login
@@ -146,7 +174,7 @@ export default function App() {
       const raw = localStorage.getItem(LOCAL_CACHE_KEY);
       if (raw) {
         const saved = JSON.parse(raw).activeUserName;
-        if (saved) return saved === 'Owner Studio' ? 'Owner' : saved;
+        if (saved) return saved === 'Owner ' ? 'Owner' : saved;
       }
     } catch {}
     return 'Iqbal Saefinnuha';
@@ -322,7 +350,7 @@ export default function App() {
 
   const formatJudulTanggalPilihan = (dateStr: string | null) => {
     if (statusFilter === 'BOOKING_WEB') {
-      return `Booking Web (${listPesananWebMenunggu.length})`;
+      return `Booking Web (${listPesananWebMenunggu.length} Item)`;
     }
     if (statusFilter === 'TANGGAL_DIPILIH' && dateStr) {
       const parts = dateStr.split('-');
@@ -332,7 +360,6 @@ export default function App() {
           return d.toLocaleDateString('id-ID', {
             day: 'numeric',
             month: 'long',
-            year: 'numeric',
           });
         }
       }
@@ -340,7 +367,6 @@ export default function App() {
     }
     return currentCalendarDate.toLocaleDateString('id-ID', {
       month: 'long',
-      year: 'numeric',
     });
   };
 
@@ -362,7 +388,81 @@ export default function App() {
   const [webConfirmExtraStr, setWebConfirmExtraStr] = useState<string>('');
   const [temaModalOpen, setTemaModalOpen] = useState(false);
   const [signatureModalOpen, setSignatureModalOpen] = useState(false);
+  const [langgananModalOpen, setLanggananModalOpen] = useState(false);
+  const [durasiPerpanjang, setDurasiPerpanjang] = useState<'BULANAN' | 'TAHUNAN'>('BULANAN');
+  const [pilihanPaketTarget, setPilihanPaketTarget] = useState<PaketLanggananTier>(owner.paketAktif || 'Pro');
   const [syncingNow, setSyncingNow] = useState(false);
+  const bgFileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const ADMIN_WA_PHONE = '6283132304649';
+
+  const handleChatAdminPerpanjang = (paketTier?: PaketLanggananTier) => {
+    const paketFinal = paketTier || pilihanPaketTarget || owner.paketAktif;
+    const durasiStr = durasiPerpanjang === 'TAHUNAN' ? '1 Tahun (Tahunan)' : '1 Bulan (Bulanan)';
+    const pesan = `Halo Admin Kafela's Agenda, saya *${owner.namaOwner || owner.namaBrand}* dari *${owner.namaBrand}* (Username: ${owner.username || '-'}). Saya ingin melakukan Perpanjangan / Upgrade Paket ke *Paket ${paketFinal} (${durasiStr})*. Sisa masa aktif saya saat ini: ${sisaHariLangganan} Hari. Mohon info nomor rekening dan petunjuk aktivasinya. Terima kasih!`;
+    const cleanPhone = ADMIN_WA_PHONE.replace(/\D/g, '');
+    const url = `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(pesan)}`;
+    try {
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } catch {
+      const link = document.createElement('a');
+      link.href = url;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.click();
+    }
+  };
+
+  const handleBackgroundUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      setToastMessage('Mohon pilih file foto (JPG, PNG, WebP)');
+      setTimeout(() => setToastMessage(null), 3000);
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const maxDim = 1600;
+        let width = img.width;
+        let height = img.height;
+        if (width > maxDim || height > maxDim) {
+          if (width > height) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          } else {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height);
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+          const updates = {
+            customBackgroundUrl: dataUrl,
+            customBackgroundBlur: typeof owner.customBackgroundBlur === 'number' ? owner.customBackgroundBlur : 8,
+            customBackgroundOpacity: typeof owner.customBackgroundOpacity === 'number' ? owner.customBackgroundOpacity : 60,
+            customBackgroundOverlayType: owner.customBackgroundOverlayType || ('HITAM' as const),
+          };
+          setOwner((prev) => ({ ...prev, ...updates }));
+          if (sessionMode === 'FIREBASE') {
+            saveOwnerProfileToFirebase(targetOwnerId, updates).catch(console.error);
+          }
+          setToastMessage('Foto background berhasil dipasang!');
+          setTimeout(() => setToastMessage(null), 3000);
+        }
+      };
+      img.src = reader.result as string;
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
 
   // Deteksi otomatis sesi login aktif pada Firebase + Splash Screen Penahan Reload
   useEffect(() => {
@@ -384,6 +484,120 @@ export default function App() {
       unsub();
     };
   }, []);
+
+  // Penanganan Tombol Kembali (Back Button HP / Browser):
+  // 1. Jika ada popup/modal terbuka: tutup popup
+  // 2. Jika di menu lain: tekan 1x kembali ke Kalender
+  // 3. Jika sudah di Kalender: tekan 2x dalam 2 detik untuk keluar
+  const lastBackPressTimeRef = useRef<number>(0);
+
+  useEffect(() => {
+    // Sisipkan history state agar tombol kembali browser/Android terdeteksi
+    try {
+      window.history.pushState({ app: 'kafela' }, '');
+    } catch {}
+
+    const handlePopState = () => {
+      // Selalu pushState kembali agar tidak terlempar langsung
+      try {
+        window.history.pushState({ app: 'kafela' }, '');
+      } catch {}
+
+      // A. Jika ada modal / menu popup terbuka, tutup terlebih dahulu
+      if (drawerOpen) {
+        setDrawerOpen(false);
+        return;
+      }
+      if (temaModalOpen) {
+        setTemaModalOpen(false);
+        return;
+      }
+      if (langgananModalOpen) {
+        setLanggananModalOpen(false);
+        return;
+      }
+      if (dpModalTarget) {
+        setDpModalTarget(null);
+        return;
+      }
+      if (aksiJadwalTarget) {
+        setAksiJadwalTarget(null);
+        return;
+      }
+      if (waChoiceTarget) {
+        setWaChoiceTarget(null);
+        return;
+      }
+      if (strukModalJadwal) {
+        setStrukModalJadwal(null);
+        return;
+      }
+      if (formModalMode) {
+        setFormModalMode(null);
+        return;
+      }
+      if (signatureModalOpen) {
+        setSignatureModalOpen(false);
+        return;
+      }
+      if (webInboxModalOpen) {
+        setWebInboxModalOpen(false);
+        return;
+      }
+      if (webConfirmTarget) {
+        setWebConfirmTarget(null);
+        return;
+      }
+      if (fabChoiceOpen) {
+        setFabChoiceOpen(false);
+        return;
+      }
+
+      // B. Jika sedang berada di menu selain KALENDER, tekan 1x kembali ke KALENDER
+      if (activeTab !== 'KALENDER') {
+        setActiveTab('KALENDER');
+        return;
+      }
+
+      // C. Jika sudah di KALENDER: tekan 2x dalam 2 detik untuk keluar
+      const now = Date.now();
+      if (now - lastBackPressTimeRef.current < 2000) {
+        setToastMessage('Keluar dari aplikasi...');
+        setTimeout(() => {
+          try {
+            window.history.go(-2);
+          } catch {}
+        }, 300);
+      } else {
+        lastBackPressTimeRef.current = now;
+        setToastMessage('Tekan sekali lagi untuk keluar dari aplikasi');
+        setTimeout(() => {
+          setToastMessage((prev) =>
+            prev === 'Tekan sekali lagi untuk keluar dari aplikasi' ? null : prev
+          );
+        }, 2000);
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, [
+    activeTab,
+    drawerOpen,
+    temaModalOpen,
+    langgananModalOpen,
+    dpModalTarget,
+    aksiJadwalTarget,
+    waChoiceTarget,
+    strukModalJadwal,
+    formModalMode,
+    signatureModalOpen,
+    webInboxModalOpen,
+    webConfirmTarget,
+    fabChoiceOpen,
+  ]);
 
   // Simpan otomatis ke LocalStorage Cache PC beserta status sesi agar Reload tidak mental ke Login
   useEffect(() => {
@@ -739,21 +953,55 @@ export default function App() {
     }
   };
 
-  // Simpan DP Manual (Persis tampilkanDialogInputDP di MainActivity.kt)
+  // Simpan Pembayaran Ke-2 atau Selanjutnya (Akumulasi DP & Pelunasan Otomatis)
   const handleSaveDpModal = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!dpModalTarget) return;
-    const nominalDp = bersihkanTitik(dpModalInputStr);
+    const nominalBaru = bersihkanTitik(dpModalInputStr);
+    if (nominalBaru <= 0) {
+      setToastMessage('Mohon masukkan nominal pembayaran');
+      setTimeout(() => setToastMessage(null), 3000);
+      return;
+    }
+
     const totalBersih = Math.max(0, dpModalTarget.hargaKotor - dpModalTarget.diskon);
-    const statusBaru = nominalDp >= totalBersih && totalBersih > 0 ? 'Lunas' : 'Booking';
+    const sudahDibayarLama = dpModalTarget.dpDibayar || 0;
+    const sisaTagihanLama = Math.max(0, totalBersih - sudahDibayarLama);
+
+    const totalAkumulasi = sudahDibayarLama + nominalBaru;
+    const isLunas = nominalBaru >= sisaTagihanLama || totalAkumulasi >= totalBersih;
+
+    const statusBaru = isLunas ? ('Lunas' as const) : ('DP' as const);
+    const finalDpDibayar = isLunas ? totalBersih : totalAkumulasi;
+
+    const labelCicilan = sudahDibayarLama > 0
+      ? `[Bayar Ke-2: +${keRupiah(nominalBaru)}]`
+      : `[DP: +${keRupiah(nominalBaru)}]`;
+    const updatedCatatan = dpModalTarget.catatan
+      ? `${dpModalTarget.catatan} ${labelCicilan}`
+      : labelCicilan;
 
     const updated: JadwalFotografi = {
       ...dpModalTarget,
-      dpDibayar: nominalDp,
+      dpDibayar: finalDpDibayar,
       status: statusBaru,
+      catatan: updatedCatatan,
     };
+
     await handleSaveJadwal(updated, false);
     setDpModalTarget(null);
+    setDpModalInputStr('');
+
+    if (isLunas) {
+      setToastMessage(`🎉 Pembayaran berhasil! Tagihan lunas penuh (${keRupiah(totalBersih)})!`);
+    } else {
+      setToastMessage(
+        `✅ Pembayaran ke-2 dicatat! Akumulasi masuk: ${keRupiah(totalAkumulasi)}, Sisa tagihan: ${keRupiah(
+          Math.max(0, totalBersih - totalAkumulasi)
+        )}`
+      );
+    }
+    setTimeout(() => setToastMessage(null), 4000);
   };
 
   // Kirim Pesan WhatsApp (Tagih Sisa / Konfirmasi Kehadiran)
@@ -969,12 +1217,92 @@ export default function App() {
       .sort((a, b) => a.waktuMulai - b.waktuMulai);
   }, [listJadwalValid, currentCalendarDate, searchQuery, selectedDateStr, statusFilter]);
 
-  const bgWallpaperColor = owner.warnaTema || '#34495E';
+  // WARNA & GAYA LATAR NAVIGASI (Header, Bar & Toolbar):
+  // Fokus khusus mengatur warna navigasi, bar color, dan toolbar.
+  // Latar belakang utama aplikasi TIDAK dipengaruhi oleh warna ini, melainkan diatur oleh wallpaper (terang/gelap).
+  const navThemeColor = owner.warnaTema || '#34495E';
+  const navBgStyleMode = owner.gayaLatarNavigasi || 'SOLID';
+  const navOpacityPercent = typeof owner.opasitasNavigasi === 'number' ? owner.opasitasNavigasi : 95;
+  const navAlpha = Math.max(0.4, Math.min(1, navOpacityPercent / 100));
+
+  // Helper konversi HEX ke RGBA
+  const hexToRgba = (hex: string, alpha: number) => {
+    let clean = (hex || '#34495E').replace('#', '').trim();
+    if (clean.length === 3) clean = clean.split('').map((c) => c + c).join('');
+    if (clean.length !== 6) return `rgba(52, 73, 94, ${alpha})`;
+    const r = parseInt(clean.substring(0, 2), 16) || 0;
+    const g = parseInt(clean.substring(2, 4), 16) || 0;
+    const b = parseInt(clean.substring(4, 6), 16) || 0;
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  };
+
+  // Gaya Latar Belakang Navigasi, Bar & Toolbar (Header, Mobile Bar, Sidebar PC)
+  const navBackgroundComputed: React.CSSProperties = useMemo(() => {
+    if (navBgStyleMode === 'GLASS') {
+      return {
+        backgroundColor: hexToRgba(navThemeColor, Math.min(0.85, navAlpha * 0.85)),
+        backdropFilter: 'blur(16px)',
+        WebkitBackdropFilter: 'blur(16px)',
+        borderColor: 'rgba(255, 255, 255, 0.15)',
+      };
+    }
+    if (navBgStyleMode === 'GRADIENT') {
+      return {
+        background: `linear-gradient(135deg, ${hexToRgba(navThemeColor, navAlpha)} 0%, rgba(15, 23, 42, 0.95) 100%)`,
+        backdropFilter: 'blur(12px)',
+        WebkitBackdropFilter: 'blur(12px)',
+        borderColor: 'rgba(255, 255, 255, 0.15)',
+      };
+    }
+    if (navBgStyleMode === 'DARK_ACCENT') {
+      return {
+        backgroundColor: 'rgba(18, 22, 30, 0.96)',
+        backdropFilter: 'blur(12px)',
+        WebkitBackdropFilter: 'blur(12px)',
+        borderBottomColor: navThemeColor,
+        borderBottomWidth: '2px',
+        borderColor: 'rgba(255, 255, 255, 0.12)',
+      };
+    }
+    // SOLID (Default)
+    return {
+      backgroundColor: hexToRgba(navThemeColor, navAlpha),
+      backdropFilter: navAlpha < 1 ? 'blur(12px)' : undefined,
+      WebkitBackdropFilter: navAlpha < 1 ? 'blur(12px)' : undefined,
+      borderColor: 'rgba(255, 255, 255, 0.12)',
+    };
+  }, [navThemeColor, navBgStyleMode, navAlpha]);
+
+  // Helper penanda aktif pada menu navigasi (sidebar & drawer)
+  const getNavActiveItemStyle = (isActive: boolean): React.CSSProperties | undefined => {
+    if (!isActive) return undefined;
+    return {
+      backgroundColor: navThemeColor,
+      color: '#FFFFFF',
+      boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+      border: '1px solid rgba(255,255,255,0.25)',
+    };
+  };
+
+  // LATAR BELAKANG UTAMA (DIATUR OLEH WALLPAPER YG PUNYA TERANG / GELAP SAJA, ABAIKAN BG UTAMA DARI WARNA TEMA):
+  const isKacaGelap = owner.isKacaGelap !== false;
+  const customBgUrl = owner.customBackgroundUrl || '';
+  const customBgBlur = typeof owner.customBackgroundBlur === 'number' ? owner.customBackgroundBlur : 8;
+  const customBgOpacity = typeof owner.customBackgroundOpacity === 'number' ? owner.customBackgroundOpacity : 60;
+  const isWhiteOverlay = owner.customBackgroundOverlayType === 'PUTIH';
+  const customBgOverlayColor = isWhiteOverlay ? '#FFFFFF' : '#000000';
+
+  // Base background warna utama aplikasi (netral gelap atau netral terang, TIDAK terdistorsi oleh warna navigasi)
+  const bgMainAppColor = isKacaGelap ? '#0E131F' : '#F1F5F9';
 
   useEffect(() => {
-    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', bgWallpaperColor);
-    document.body.style.backgroundColor = bgWallpaperColor;
-  }, [bgWallpaperColor]);
+    // Sinkronisasi status bar mobile / address bar browser ke warna tema navigasi
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', navThemeColor);
+    // Background body mengikuti mode wallpaper terang/gelap (bukan warna tema navigasi)
+    document.body.style.backgroundColor = customBgUrl
+      ? (isWhiteOverlay ? '#F1F5F9' : '#0B0F17')
+      : bgMainAppColor;
+  }, [navThemeColor, customBgUrl, isWhiteOverlay, bgMainAppColor]);
 
   // SPLASH SCREEN ("FLASH") SAAT RELOAD AGAR TIDAK TERLEMPAR KE HALAMAN LOGIN
   if (isAuthChecking && !sessionMode) {
@@ -1016,28 +1344,64 @@ export default function App() {
     Math.ceil((owner.tanggalLangganan - Date.now()) / (1000 * 60 * 60 * 24))
   );
 
-  // Update header color based on theme
-  const headerBgColor = bgWallpaperColor;
+  const cardOpacityVal = typeof owner.opasitasKartu === 'number'
+    ? owner.opasitasKartu
+    : customBgUrl ? 58 : 70;
+  const cardOpacity = cardOpacityVal / 100;
 
-  const isKacaGelap = owner.isKacaGelap !== false;
   const cardBgStyle = isKacaGelap
-    ? { backgroundColor: 'rgba(30, 30, 30, 0.88)', borderColor: 'rgba(255, 255, 255, 0.1)' }
-    : { backgroundColor: 'rgba(255, 255, 255, 0.92)', borderColor: 'rgba(0, 0, 0, 0.1)' };
+    ? {
+        backgroundColor: `rgba(20, 24, 32, ${cardOpacity})`,
+        borderColor: 'rgba(255, 255, 255, 0.14)',
+        backdropFilter: 'blur(16px)',
+        WebkitBackdropFilter: 'blur(16px)',
+      }
+    : {
+        backgroundColor: `rgba(255, 255, 255, ${Math.min(0.88, cardOpacity + 0.1)})`,
+        borderColor: 'rgba(0, 0, 0, 0.08)',
+        backdropFilter: 'blur(16px)',
+        WebkitBackdropFilter: 'blur(16px)',
+      };
   const textPrimaryColor = isKacaGelap ? '#FFFFFF' : '#2C3E50';
   const textSecondaryColor = isKacaGelap ? '#BBBBBB' : '#555555';
 
 
   return (
     <div
-      className="min-h-screen w-full select-none transition-colors duration-300"
+      className="min-h-screen w-full select-none transition-colors duration-300 relative overflow-x-hidden"
       style={{
-        backgroundColor: bgWallpaperColor,
+        backgroundColor: customBgUrl ? (isWhiteOverlay ? '#F1F5F9' : '#0B0F17') : bgMainAppColor,
         color: '#FFFFFF',
       }}
     >
+      {/* Layer Wallpaper / Foto Background dengan Efek Blur & Gelap yang dapat diatur */}
+      {customBgUrl && (
+        <div
+          className="fixed inset-0 pointer-events-none z-0 overflow-hidden"
+          aria-hidden="true"
+        >
+          <div
+            className="absolute inset-[-25px] bg-cover bg-center bg-no-repeat transition-all duration-300 will-change-transform"
+            style={{
+              backgroundImage: `url(${customBgUrl})`,
+              filter: `blur(${customBgBlur}px)`,
+              transform: 'scale(1.08)',
+            }}
+          />
+          {/* Overlay netral (Hitam Murni atau Putih Murni, tanpa bias merah/warna lain) */}
+          <div
+            className="absolute inset-0 transition-all duration-300"
+            style={{
+              backgroundColor: customBgOverlayColor,
+              opacity: customBgOpacity / 100,
+            }}
+          />
+        </div>
+      )}
+
       <div
-        className="min-h-screen w-full flex flex-col relative transition-all duration-300"
-        style={{ backgroundColor: bgWallpaperColor, color: '#FFFFFF' }}
+        className="min-h-screen w-full flex flex-col relative z-10 transition-all duration-300"
+        style={{ backgroundColor: customBgUrl ? 'transparent' : bgMainAppColor, color: '#FFFFFF' }}
       >
         <OfflineIndicator />
         <PWAInstallFloatingBanner />
@@ -1050,10 +1414,10 @@ export default function App() {
         <header
           className={
             isMobileLayout
-              ? 'px-3.5 py-2 flex items-center justify-between gap-2 border-b border-white/10 sticky top-0 z-30'
-              : 'px-6 py-3 flex items-center justify-between gap-4 border-b border-white/10 sticky top-0 z-30 shadow-md'
+              ? 'px-3.5 py-2 flex items-center justify-between gap-2 border-b border-white/10 sticky top-0 z-30 transition-all duration-200'
+              : 'px-6 py-3 flex items-center justify-between gap-4 border-b border-white/10 sticky top-0 z-30 shadow-md transition-all duration-200'
           }
-          style={{ backgroundColor: headerBgColor }}
+          style={navBackgroundComputed}
         >
           {/* Kiri: Tombol Drawer (Khusus HP) + Judul Kafela's Agenda */}
           <div className="flex items-center gap-3">
@@ -1086,15 +1450,15 @@ export default function App() {
                 >
                   {owner.namaBrand || "Kafela's Agenda"}
                 </h1>
-                <p className="text-[11px] text-white/85 leading-tight flex items-center gap-1.5 flex-wrap">
-                  <span className="font-bold text-amber-300">
-                    👤 {activeUserName === 'Owner Studio' ? 'Owner' : activeUserName}
-                  </span>
-                  <span className="text-white/40">•</span>
-                  <span className="px-1.5 py-0.5 rounded text-[10px] font-extrabold uppercase bg-amber-500/20 text-amber-400 border border-amber-500/30">
-                    {userRole === 'owner' ? 'Owner' : userRole === 'admin' ? 'Admin' : 'Anggota Tim'}
-                  </span>
-                </p>
+  <p className="text-[11px] text-white/85 leading-tight flex items-center gap-1.5 flex-wrap">
+    <span className="font-bold text-amber-300">
+      👤 {activeUserName === 'Owner' ? 'Owner' : activeUserName}
+    </span>
+    <span className="text-white/40">•</span>
+    <span className="px-1.5 py-0.5 rounded text-[10px] font-extrabold uppercase bg-amber-500/20 text-amber-400 border border-amber-500/30">
+      {userRole === 'owner' ? 'Owner' : userRole === 'admin' ? 'Admin' : 'Anggota Tim'}
+    </span>
+  </p>
               </div>
             </div>
           </div>
@@ -1170,28 +1534,32 @@ export default function App() {
               </>
             )}
 
-            <button
-              type="button"
-              onClick={() => {
-                setActiveTab('KALENDER');
-                setSelectedDateStr(null);
-                setStatusFilter('SEMUA_BULAN');
-                bumpCacheHit();
-              }}
-              className="px-3 py-1.5 rounded-lg text-xs font-extrabold transition-transform hover:scale-105 cursor-pointer shadow-xs"
-              style={{
-                backgroundColor:
-                  statusFilter === 'SEMUA_BULAN' ? '#2980B9' : 'rgba(255, 255, 255, 0.14)',
-                color: '#FFFFFF',
-                border:
-                  statusFilter === 'SEMUA_BULAN'
-                    ? '1px solid rgba(255, 255, 255, 0.45)'
-                    : '1px solid rgba(255, 255, 255, 0.15)',
-              }}
-              title="Klik untuk memunculkan semua jadwal di bulan ini beserta tanggalnya"
-            >
-              {ringkasanBulanIni.totalEventBulanIni} Event
-            </button>
+            
+
+  {!isMobileLayout && (
+  <button
+    type="button"
+    onClick={() => {
+      setActiveTab('KALENDER');
+      setSelectedDateStr(null);
+      setStatusFilter('SEMUA_BULAN');
+      bumpCacheHit();
+    }}
+    className="px-3 py-1.5 rounded-lg text-xs font-extrabold transition-transform hover:scale-105 cursor-pointer shadow-xs"
+    style={{
+      backgroundColor:
+        statusFilter === 'SEMUA_BULAN' ? '#2980B9' : 'rgba(255, 255, 255, 0.14)',
+      color: '#FFFFFF',
+      border:
+        statusFilter === 'SEMUA_BULAN'
+          ? '1px solid rgba(255, 255, 255, 0.45)'
+          : '1px solid rgba(255, 255, 255, 0.15)',
+    }}
+    title={`Total ${ringkasanBulanIni.totalEventBulanIni} item jadwal di bulan ${currentCalendarDate.toLocaleDateString('id-ID', { month: 'long' })} (klik untuk lihat semua)`}
+  >
+    {ringkasanBulanIni.totalEventBulanIni} Item
+  </button>
+)}
 
             {!isKruAnggota && (
               <button
@@ -1236,7 +1604,7 @@ export default function App() {
             style={{ backgroundColor: '#121212', color: '#FFFFFF' }} // Could be derived from theme
           >
             {/* Header Drawer Mengikuti Warna Tema Studio */}
-            <div className="p-5" style={{ backgroundColor: headerBgColor }}>
+            <div className="p-5" style={navBackgroundComputed}>
               <div className="flex items-start justify-between">
                 <div>
                   <h2 className="font-bold text-white truncate max-w-[200px]" style={{ fontSize: '20px' }}>
@@ -1270,11 +1638,19 @@ export default function App() {
               {/* Card Status Paket (Disembunyikan untuk Anggota / Crew) */}
               {!isKruAnggota && (
                 <div
-                  className="mt-3.5 rounded-[10px] p-3 border border-white/10"
-                  style={{ backgroundColor: 'rgba(0, 0, 0, 0.28)' }}
+                  role="button"
+                  tabIndex={0}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setDrawerOpen(false);
+                    setLanggananModalOpen(true);
+                  }}
+                  className="mt-3.5 rounded-[12px] p-3 border border-white/20 cursor-pointer hover:border-amber-400 hover:bg-white/10 active:scale-[0.98] transition-all shadow-md group relative"
+                  style={{ backgroundColor: 'rgba(0, 0, 0, 0.35)' }}
+                  title="Klik untuk lihat pilihan paket & perpanjang langganan"
                 >
                   <div className="flex items-center justify-between">
-                    <span className="font-bold" style={{ fontSize: '12px', color: '#2ECC71' }}>
+                    <span className="font-bold flex items-center gap-1.5" style={{ fontSize: '12px', color: '#2ECC71' }}>
                       PAKET AKTIF: {owner.paketAktif.toUpperCase()}
                     </span>
                     <span
@@ -1284,9 +1660,14 @@ export default function App() {
                       AKTIF
                     </span>
                   </div>
-                  <p className="mt-1" style={{ fontSize: '11px', color: '#ECF0F1' }}>
-                    Masa aktif: Sisa {sisaHariLangganan} Hari
-                  </p>
+                  <div className="mt-1.5 flex items-center justify-between text-xs">
+                    <span style={{ fontSize: '11px', color: '#ECF0F1' }}>
+                      Masa aktif: Sisa {sisaHariLangganan} Hari
+                    </span>
+                    <span className="text-[10px] font-black text-amber-300 group-hover:text-amber-200 bg-amber-500/20 px-2 py-0.5 rounded border border-amber-400/40">
+                      Perpanjang Paket →
+                    </span>
+                  </div>
                 </div>
               )}
             </div>
@@ -1299,11 +1680,12 @@ export default function App() {
                   setActiveTab('KALENDER');
                   setDrawerOpen(false);
                 }}
-                className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-xl font-bold transition-colors cursor-pointer ${
+                className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-xl font-bold transition-all cursor-pointer ${
                   activeTab === 'KALENDER'
-                    ? 'bg-[#2980B9] text-white'
+                    ? 'text-white'
                     : 'text-[#DDDDDD] hover:bg-white/5'
                 }`}
+                style={getNavActiveItemStyle(activeTab === 'KALENDER')}
               >
                 <CalendarIcon className="w-4 h-4" />
                 <span>Kalender &amp; Daftar Jadwal</span>
@@ -1345,11 +1727,12 @@ export default function App() {
                       setActiveTab('PAKET');
                       setDrawerOpen(false);
                     }}
-                    className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-xl font-bold transition-colors cursor-pointer ${
+                    className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-xl font-bold transition-all cursor-pointer ${
                       activeTab === 'PAKET'
-                        ? 'bg-[#2980B9] text-white'
+                        ? 'text-white'
                         : 'text-[#DDDDDD] hover:bg-white/5'
                     }`}
+                    style={getNavActiveItemStyle(activeTab === 'PAKET')}
                   >
                     <Layers className="w-4 h-4" />
                     <span>Paket Layanan</span>
@@ -1361,11 +1744,12 @@ export default function App() {
                       setActiveTab('LAPORAN');
                       setDrawerOpen(false);
                     }}
-                    className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-xl font-bold transition-colors cursor-pointer ${
+                    className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-xl font-bold transition-all cursor-pointer ${
                       activeTab === 'LAPORAN'
-                        ? 'bg-[#2980B9] text-white'
+                        ? 'text-white'
                         : 'text-[#DDDDDD] hover:bg-white/5'
                     }`}
+                    style={getNavActiveItemStyle(activeTab === 'LAPORAN')}
                   >
                     <BarChart3 className="w-4 h-4" />
                     <span>Laporan Keuangan &amp; Piutang</span>
@@ -1377,11 +1761,12 @@ export default function App() {
                       setActiveTab('ARSIP');
                       setDrawerOpen(false);
                     }}
-                    className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-xl font-bold transition-colors cursor-pointer ${
+                    className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-xl font-bold transition-all cursor-pointer ${
                       activeTab === 'ARSIP'
-                        ? 'bg-[#2980B9] text-white'
+                        ? 'text-white'
                         : 'text-[#DDDDDD] hover:bg-white/5'
                     }`}
+                    style={getNavActiveItemStyle(activeTab === 'ARSIP')}
                   >
                     <Archive className="w-4 h-4" />
                     <span>Gudang Arsip &amp; Pencarian</span>
@@ -1393,11 +1778,12 @@ export default function App() {
                       setActiveTab('TIM');
                       setDrawerOpen(false);
                     }}
-                    className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-xl font-bold transition-colors cursor-pointer ${
+                    className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-xl font-bold transition-all cursor-pointer ${
                       activeTab === 'TIM'
-                        ? 'bg-[#2980B9] text-white'
+                        ? 'text-white'
                         : 'text-[#DDDDDD] hover:bg-white/5'
                     }`}
+                    style={getNavActiveItemStyle(activeTab === 'TIM')}
                   >
                     <Users className="w-4 h-4" />
                     <span>Kelola Tim &amp; Crew</span>
@@ -1422,11 +1808,12 @@ export default function App() {
                       setActiveTab('PENGATURAN');
                       setDrawerOpen(false);
                     }}
-                    className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-xl font-bold transition-colors cursor-pointer ${
+                    className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-xl font-bold transition-all cursor-pointer ${
                       activeTab === 'PENGATURAN' && pengaturanSubTab === 'WEB'
-                        ? 'bg-[#2980B9] text-white'
+                        ? 'text-white'
                         : 'text-[#DDDDDD] hover:bg-white/5'
                     }`}
+                    style={getNavActiveItemStyle(activeTab === 'PENGATURAN' && pengaturanSubTab === 'WEB')}
                   >
                     <Globe className="w-4 h-4 text-purple-400" />
                     <span>Atur Website &amp; Link Booking</span>
@@ -1439,11 +1826,12 @@ export default function App() {
                       setActiveTab('PENGATURAN');
                       setDrawerOpen(false);
                     }}
-                    className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-xl font-bold transition-colors cursor-pointer ${
+                    className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-xl font-bold transition-all cursor-pointer ${
                       activeTab === 'PENGATURAN' && pengaturanSubTab !== 'WEB'
-                        ? 'bg-[#2980B9] text-white'
+                        ? 'text-white'
                         : 'text-[#DDDDDD] hover:bg-white/5'
                     }`}
+                    style={getNavActiveItemStyle(activeTab === 'PENGATURAN' && pengaturanSubTab !== 'WEB')}
                   >
                     <Settings className="w-4 h-4" />
                     <span>Pengaturan &amp; Rekening</span>
@@ -1490,14 +1878,18 @@ export default function App() {
         {/* MENU SAMPING PERMANEN KHUSUS TAMPILAN WEB PC */}
         {!isMobileLayout && (
           <aside
-            className="w-[260px] shrink-0 flex flex-col border-r border-white/10 shadow-xl sticky top-[53px] h-[calc(100vh-53px)] overflow-y-auto"
-            style={{ backgroundColor: 'rgba(24, 28, 34, 0.94)', color: '#FFFFFF' }}
+            className="w-[260px] shrink-0 flex flex-col border-r border-white/10 shadow-xl sticky top-[53px] h-[calc(100vh-53px)] overflow-y-auto transition-all duration-200"
+            style={navBackgroundComputed}
           >
             {/* Ringkasan Paket Aktif di Menu Samping PC (Disembunyikan untuk Anggota / Crew) */}
             {!isKruAnggota && (
               <div
-                className="p-3.5 border-b border-white/10"
-                style={{ backgroundColor: headerBgColor }}
+                role="button"
+                tabIndex={0}
+                onClick={() => setLanggananModalOpen(true)}
+                className="p-3.5 border-b border-white/10 cursor-pointer hover:bg-white/10 active:scale-[0.98] transition-all group"
+                style={{ backgroundColor: 'rgba(0, 0, 0, 0.25)' }}
+                title="Klik untuk lihat pilihan paket & perpanjang langganan"
               >
                 <div className="flex items-center justify-between">
                   <span className="font-bold text-[11px] text-[#2ECC71]">
@@ -1508,6 +1900,12 @@ export default function App() {
                     style={{ backgroundColor: '#F39C12' }}
                   >
                     Sisa {sisaHariLangganan} Hari
+                  </span>
+                </div>
+                <div className="mt-1.5 flex items-center justify-between text-[10px] text-amber-300 font-bold">
+                  <span>Pilihan Paket Langganan</span>
+                  <span className="inline-flex items-center gap-1 bg-amber-500/20 px-2 py-0.5 rounded border border-amber-400/40 text-amber-300 group-hover:text-amber-200">
+                    Perpanjang →
                   </span>
                 </div>
               </div>
@@ -1521,11 +1919,12 @@ export default function App() {
                   setActiveTab('KALENDER');
                   bumpCacheHit();
                 }}
-                className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl font-bold transition-colors cursor-pointer ${
+                className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl font-bold transition-all cursor-pointer ${
                   activeTab === 'KALENDER'
-                    ? 'bg-[#2980B9] text-white shadow'
+                    ? 'text-white'
                     : 'text-[#DDDDDD] hover:bg-white/5'
                 }`}
+                style={getNavActiveItemStyle(activeTab === 'KALENDER')}
               >
                 <CalendarIcon className="w-4 h-4 shrink-0" />
                 <span>Kalender &amp; Jadwal</span>
@@ -1565,11 +1964,12 @@ export default function App() {
                       setActiveTab('PAKET');
                       bumpCacheHit();
                     }}
-                    className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl font-bold transition-colors cursor-pointer ${
+                    className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl font-bold transition-all cursor-pointer ${
                       activeTab === 'PAKET'
-                        ? 'bg-[#2980B9] text-white shadow'
+                        ? 'text-white'
                         : 'text-[#DDDDDD] hover:bg-white/5'
                     }`}
+                    style={getNavActiveItemStyle(activeTab === 'PAKET')}
                   >
                     <Layers className="w-4 h-4 shrink-0" />
                     <span>Paket Layanan</span>
@@ -1581,11 +1981,12 @@ export default function App() {
                       setActiveTab('LAPORAN');
                       bumpCacheHit();
                     }}
-                    className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl font-bold transition-colors cursor-pointer ${
+                    className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl font-bold transition-all cursor-pointer ${
                       activeTab === 'LAPORAN'
-                        ? 'bg-[#2980B9] text-white shadow'
+                        ? 'text-white'
                         : 'text-[#DDDDDD] hover:bg-white/5'
                     }`}
+                    style={getNavActiveItemStyle(activeTab === 'LAPORAN')}
                   >
                     <BarChart3 className="w-4 h-4 shrink-0" />
                     <span>Laporan Keuangan &amp; Piutang</span>
@@ -1597,11 +1998,12 @@ export default function App() {
                       setActiveTab('ARSIP');
                       bumpCacheHit();
                     }}
-                    className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl font-bold transition-colors cursor-pointer ${
+                    className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl font-bold transition-all cursor-pointer ${
                       activeTab === 'ARSIP'
-                        ? 'bg-[#2980B9] text-white shadow'
+                        ? 'text-white'
                         : 'text-[#DDDDDD] hover:bg-white/5'
                     }`}
+                    style={getNavActiveItemStyle(activeTab === 'ARSIP')}
                   >
                     <Archive className="w-4 h-4 shrink-0" />
                     <span>Gudang Arsip &amp; Pencarian</span>
@@ -1613,11 +2015,12 @@ export default function App() {
                       setActiveTab('TIM');
                       bumpCacheHit();
                     }}
-                    className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl font-bold transition-colors cursor-pointer ${
+                    className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl font-bold transition-all cursor-pointer ${
                       activeTab === 'TIM'
-                        ? 'bg-[#2980B9] text-white shadow'
+                        ? 'text-white'
                         : 'text-[#DDDDDD] hover:bg-white/5'
                     }`}
+                    style={getNavActiveItemStyle(activeTab === 'TIM')}
                   >
                     <Users className="w-4 h-4 shrink-0" />
                     <span>Kelola Tim &amp; Crew</span>
@@ -1639,11 +2042,12 @@ export default function App() {
                       setActiveTab('PENGATURAN');
                       bumpCacheHit();
                     }}
-                    className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl font-bold transition-colors cursor-pointer ${
-                      activeTab === 'PENGATURAN' && pengaturanSubTab === 'WEB'
-                        ? 'bg-[#2980B9] text-white shadow'
+                    className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl font-bold transition-all cursor-pointer ${
+                      activeTab === 'PENGATURAN' && textPrimaryColor && pengaturanSubTab === 'WEB'
+                        ? 'text-white'
                         : 'text-[#DDDDDD] hover:bg-white/5'
                     }`}
+                    style={getNavActiveItemStyle(activeTab === 'PENGATURAN' && pengaturanSubTab === 'WEB')}
                   >
                     <Globe className="w-4 h-4 text-purple-400 shrink-0" />
                     <span>Atur Website &amp; Link Booking</span>
@@ -1656,11 +2060,12 @@ export default function App() {
                       setActiveTab('PENGATURAN');
                       bumpCacheHit();
                     }}
-                    className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl font-bold transition-colors cursor-pointer ${
+                    className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl font-bold transition-all cursor-pointer ${
                       activeTab === 'PENGATURAN' && pengaturanSubTab !== 'WEB'
-                        ? 'bg-[#2980B9] text-white shadow'
+                        ? 'text-white'
                         : 'text-[#DDDDDD] hover:bg-white/5'
                     }`}
+                    style={getNavActiveItemStyle(activeTab === 'PENGATURAN' && pengaturanSubTab !== 'WEB')}
                   >
                     <Settings className="w-4 h-4 shrink-0" />
                     <span>Pengaturan &amp; Rekening</span>
@@ -1701,20 +2106,6 @@ export default function App() {
           isMobileLayout ? 'py-2.5 px-2.5 pb-24' : 'max-w-[1440px] py-6 px-6'
         }`}
       >
-        {/* Tombol Kembali ke Kalender saat membuka menu lain di HP */}
-        {isMobileLayout && activeTab !== 'KALENDER' && (
-          <div className="mb-2.5 flex items-center justify-between">
-            <button
-              type="button"
-              onClick={() => setActiveTab('KALENDER')}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-white bg-black/35 hover:bg-black/50 border border-white/15 cursor-pointer"
-            >
-              <ChevronLeft className="w-4 h-4" />
-              <span>Kembali ke Kalender Utama</span>
-            </button>
-          </div>
-        )}
-
         {activeTab === 'KALENDER' && (
           <div>
             {/* =============================================================== */}
@@ -1811,14 +2202,14 @@ export default function App() {
                         <ChevronLeft className="w-5 h-5" />
                       </button>
 
-                      <div className="text-center">
+                      <div className="text-center flex flex-col items-center justify-center">
                         <h2
                           onClick={() => {
                             setCurrentCalendarDate(new Date());
                             setSelectedDateStr(null);
                             setStatusFilter('SEMUA_BULAN');
                           }}
-                          className="font-extrabold tracking-tight capitalize cursor-pointer"
+                          className="font-extrabold tracking-tight capitalize cursor-pointer hover:opacity-85 transition-opacity"
                           style={{
                             fontSize: isMobileLayout ? '16px' : '18px',
                             color: textPrimaryColor,
@@ -1827,9 +2218,27 @@ export default function App() {
                         >
                           {currentCalendarDate.toLocaleDateString('id-ID', {
                             month: 'long',
-                            year: 'numeric',
                           })}
                         </h2>
+                        <span
+                          onClick={() => {
+                            setSelectedDateStr(null);
+                            setStatusFilter('SEMUA_BULAN');
+                          }}
+                          className="mt-0.5 inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10.5px] font-bold cursor-pointer transition-all hover:scale-105 shadow-xs"
+                          style={{
+                            backgroundColor:
+                              statusFilter === 'SEMUA_BULAN'
+                                ? 'rgba(41, 128, 185, 0.35)'
+                                : 'rgba(255, 255, 255, 0.12)',
+                            color: textSecondaryColor,
+                            border: '1px solid rgba(255, 255, 255, 0.15)',
+                          }}
+                          title={`Terdapat total ${ringkasanBulanIni.totalEventBulanIni} item jadwal di bulan ${currentCalendarDate.toLocaleDateString('id-ID', { month: 'long' })}`}
+                        >
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block animate-pulse" />
+                          <span>{ringkasanBulanIni.totalEventBulanIni} Event</span>
+                        </span>
                       </div>
 
                       <button
@@ -2028,7 +2437,7 @@ export default function App() {
                             d="M 3,5 L 8,19 L 12,12 L 16,19 L 21,5 L 17,5 L 14,14 L 12,10 L 10,14 L 7,5 Z"
                           />
                         </svg>
-                        <span>Booking Web</span>
+                        <span>Booking Web </span>
                       </div>
                       <div className="flex items-center gap-1">
                         <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 shrink-0">
@@ -2041,16 +2450,20 @@ export default function App() {
                             d="M11.5,3.5 C16,2.5 21.5,6 21,12.5 C20.5,19 14.5,21.5 9,20.5 C3.5,19.5 2.5,13 4,8.5 C5.5,4 9.5,3 12.5,4"
                           />
                         </svg>
-                        <span>Booking</span>
+                         <span>Booking ({ringkasanBulanIni.jmlBookingBaru })</span>
                       </div>
-                      <div className="flex items-center gap-1">
+    <div className="flex items-center gap-1">
                         <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 shrink-0">
                           <path
-                            fill="#E74C3C"
-                            d="M 12,2 C 18,2 23,7 23,13 C 23,19 18,23 12,23 C 6,23 2,19 2,13 C 2,8 5,4 10,3 C 15,2 19,5 19,10 C 19,15 15,19 10,19 C 8,19 6,18 4,16 C 6,17 7,18 10,18 C 14,18 18,14 18,10 C 18,6 14,3.5 10,4.5 C 6,5.5 3,9 3,13 C 3,18 7,22 12,22 C 17,22 22,18 22,13 C 22,8 17,3 12,2 Z"
+                            fill="#FFCE1b"
+                            stroke="#000000"
+                            strokeWidth="0.3"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            d="M 3,5 L 8,19 L 12,12 L 16,19 L 21,5 L 17,5 L 14,14 L 12,10 L 10,14 L 7,5 Z"
                           />
                         </svg>
-                        <span>Sudah DP</span>
+                        <span>Sudah Dp ({ringkasanBulanIni.jmlSudahDp})</span>
                       </div>
                       <div className="flex items-center gap-1">
                         <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 shrink-0">
@@ -2059,7 +2472,7 @@ export default function App() {
                             d="M 12,2 C 18,2 23,7 23,13 C 23,19 18,23 12,23 C 6,23 2,19 2,13 C 2,8 5,4 10,3 C 15,2 19,5 19,10 C 19,15 15,19 10,19 C 8,19 6,18 4,16 C 6,17 7,18 10,18 C 14,18 18,14 18,10 C 18,6 14,3.5 10,4.5 C 6,5.5 3,9 3,13 C 3,18 7,22 12,22 C 17,22 22,18 22,13 C 22,8 17,3 12,2 Z"
                           />
                         </svg>
-                        <span>Lunas</span>
+                       <span>Lunas ({ringkasanBulanIni.jmlLunas})</span>
                       </div>
                     </div>
                   </div>
@@ -2167,6 +2580,17 @@ export default function App() {
                     >
                       {formatJudulTanggalPilihan(selectedDateStr)}
                     </h2>
+                    <span
+                      className="px-2.5 py-0.5 rounded-full text-[11px] font-extrabold shadow-xs"
+                      style={{
+                        backgroundColor: 'rgba(255, 255, 255, 0.16)',
+                        color: isMobileLayout ? '#FFFFFF' : textPrimaryColor,
+                        border: '1px solid rgba(255, 255, 255, 0.2)',
+                      }}
+                      title={`Terdapat ${filteredScheduleList.length} item jadwal pada tampilan ini`}
+                    >
+                      {filteredScheduleList.length} Item
+                    </span>
 
                     {/* Spam button removed as requested */}
                   </div>
@@ -2388,7 +2812,7 @@ export default function App() {
                               }}
                               className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-white/10 hover:bg-white/15 border border-white/15 cursor-pointer"
                             >
-                              Lihat Semua Bulan Ini ({ringkasanBulanIni.totalEventBulanIni} Event)
+                              Lihat Semua Bulan Ini ({ringkasanBulanIni.totalEventBulanIni} Item)
                             </button>
                           )}
                       </div>
@@ -2432,10 +2856,24 @@ export default function App() {
                         <div
                           key={item.idJadwal}
                           onClick={() => setAksiJadwalTarget(item)}
-                          className={`rounded-[11px] overflow-hidden shadow-md border flex cursor-pointer transition-transform hover:scale-[1.005] ${
-                            isMobileLayout ? '' : 'bg-black/25 border-white/10 hover:bg-black/35'
-                          }`}
-                          style={isMobileLayout ? cardBgStyle : undefined}
+                          className="rounded-[11px] overflow-hidden shadow-md border flex cursor-pointer transition-all hover:scale-[1.005] backdrop-blur-md"
+                          style={
+                            isMobileLayout
+                              ? cardBgStyle
+                              : isKacaGelap
+                              ? {
+                                  backgroundColor: `rgba(12, 16, 24, ${Math.max(0.28, cardOpacity - 0.2)})`,
+                                  borderColor: 'rgba(255, 255, 255, 0.12)',
+                                  backdropFilter: 'blur(12px)',
+                                  WebkitBackdropFilter: 'blur(12px)',
+                                }
+                              : {
+                                  backgroundColor: `rgba(255, 255, 255, ${Math.max(0.4, cardOpacity - 0.15)})`,
+                                  borderColor: 'rgba(0, 0, 0, 0.08)',
+                                  backdropFilter: 'blur(12px)',
+                                  WebkitBackdropFilter: 'blur(12px)',
+                                }
+                          }
                         >
                           {/* Garis Status Kiri */}
                           <div
@@ -2697,7 +3135,7 @@ export default function App() {
           />
         )}
 
-        {activeTab === 'TIM' && !isKruAnggota && (
+        {activeTab === 'TIM' && !isKruAnggota && getLimits(owner.paketAktif).canManageTeam && (
           <KelolaTimView
             timList={timList}
             namaBrand={owner.namaBrand}
@@ -2719,6 +3157,11 @@ export default function App() {
             }}
           />
         )}
+        {activeTab === 'TIM' && !isKruAnggota && !getLimits(owner.paketAktif).canManageTeam && (
+          <div className="p-8 text-center text-slate-500 text-xs">
+            Fitur Kelola Tim tidak tersedia pada paket Standar. Silakan upgrade ke paket Pro atau Ultimate.
+          </div>
+        )}
 
         {activeTab === 'PENGATURAN' && !isKruAnggota && (
           <PengaturanStudioView
@@ -2726,6 +3169,10 @@ export default function App() {
             rekening={rekening}
             initialSubTab={pengaturanSubTab}
             onUpdateOwner={async (updates) => {
+              // Jika paket Standar, blokir perubahan tema
+              if (owner.paketAktif === 'Starter' && updates.temaWeb) {
+                return;
+              }
               setOwner((prev) => ({ ...prev, ...updates }));
               if (sessionMode === 'FIREBASE') {
                 await saveOwnerProfileToFirebase(targetOwnerId, updates);
@@ -2743,6 +3190,8 @@ export default function App() {
       </main>
       </div>
 
+   
+
       {/* ===================================================================== */}
       {/* FLOATING ACTION BUTTON (+) PERSIS fabTambah DI activity_main.xml      */}
       {/* ===================================================================== */}
@@ -2750,8 +3199,10 @@ export default function App() {
         <button
           type="button"
           onClick={() => setFabChoiceOpen(true)}
-          className="fixed bottom-6 right-6 z-40 w-14 h-14 rounded-full flex items-center justify-center shadow-2xl border border-white/20 hover:scale-105 transition-transform cursor-pointer"
-          style={{ backgroundColor: '#2C3E50', color: '#FFFFFF' }}
+          className={`fixed ${
+            isMobileLayout ? 'bottom-20 right-4' : 'bottom-6 right-6'
+          } z-40 w-14 h-14 rounded-full flex items-center justify-center shadow-2xl border border-white/20 hover:scale-105 transition-transform cursor-pointer`}
+          style={{ backgroundColor: navThemeColor, color: '#FFFFFF' }}
           title="Tambah Jadwal / Kasir Cepat"
         >
           <Plus className="w-7 h-7" />
@@ -2908,21 +3359,20 @@ export default function App() {
                   <span>Tandai Lunas</span>
                 </button>
 
-                {/* Atur Nominal DP */}
+                {/* Pembayaran Ke-2 atau Selanjutnya (Pengganti Atur Nominal DP) */}
                 <button
                   type="button"
                   onClick={() => {
                     const target = aksiJadwalTarget;
                     setAksiJadwalTarget(null);
                     setDpModalTarget(target);
-                    setDpModalInputStr(
-                      target.dpDibayar > 0 ? formatRibuanInput(String(target.dpDibayar)) : ''
-                    );
+                    setDpModalInputStr('');
                   }}
-                  className="w-full py-3 px-4 rounded-xl font-bold text-sm border cursor-pointer hover:bg-slate-50"
-                  style={{ borderColor: '#BDC3C7', color: '#2C3E50' }}
+                  className="w-full py-3 px-4 rounded-xl font-bold text-sm border cursor-pointer hover:bg-amber-50 transition-colors flex items-center justify-center gap-2"
+                  style={{ borderColor: '#F39C12', color: '#D35400', backgroundColor: '#FEF9E7' }}
                 >
-                  Atur Nominal DP
+                  <CreditCard className="w-4 h-4 text-[#F39C12]" />
+                  <span>Pembayaran Selanjutnya</span>
                 </button>
 
                 {/* Edit Data Jadwal */}
@@ -3080,6 +3530,7 @@ export default function App() {
               jenisUsaha={owner.jenisUsaha}
               editItem={formModalMode === 'EDIT_JADWAL' ? editingJadwal : null}
               existingJadwal={formModalMode === 'EDIT_JADWAL' ? editingJadwal : null}
+              allJadwalList={[...jadwalAktif, ...jadwalArsip]}
               onSave={handleSaveJadwal}
               onOpenMasterPaket={() => {
                 setFormModalMode(null);
@@ -3096,51 +3547,163 @@ export default function App() {
       )}
 
       {/* ===================================================================== */}
-      {/* MODAL ATUR NOMINAL DP (Persis dialog_input_dp.xml)                    */}
+      {/* MODAL PEMBAYARAN KE-2 / SELANJUTNYA (AKUMULASI & HITUNG SISA PEMBAYARAN) */}
       {/* ===================================================================== */}
-      {dpModalTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4">
-          <div
-            className="w-full max-w-md rounded-2xl p-6 space-y-4"
-            style={{ backgroundColor: '#FFFFFF', color: '#2C3E50' }}
-          >
-            <h3 className="text-lg font-bold">Atur Pembayaran DP</h3>
-            <p className="text-sm font-bold" style={{ color: '#27AE60' }}>
-              Total Tagihan Bersih:{' '}
-              {keRupiah(Math.max(0, dpModalTarget.hargaKotor - dpModalTarget.diskon))}
-            </p>
-            <form onSubmit={handleSaveDpModal} className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-600 mb-1">
-                  Masukkan Nominal DP (Rp)
-                </label>
-                <input
-                  type="text"
-                  placeholder="Contoh: 500.000"
-                  value={dpModalInputStr}
-                  onChange={(e) => setDpModalInputStr(formatRibuanInput(e.target.value))}
-                  className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm font-bold text-slate-900"
-                />
-              </div>
-              <div className="flex justify-end gap-2">
+      {dpModalTarget && (() => {
+        const totalBersih = Math.max(0, dpModalTarget.hargaKotor - dpModalTarget.diskon);
+        const sudahDibayarLama = dpModalTarget.dpDibayar || 0;
+        const sisaTagihan = Math.max(0, totalBersih - sudahDibayarLama);
+        const nominalInput = bersihkanTitik(dpModalInputStr);
+        const totalAkumulasi = sudahDibayarLama + nominalInput;
+        const sisaSetelahBayar = Math.max(0, totalBersih - totalAkumulasi);
+        const isAkanLunas = (nominalInput >= sisaTagihan && sisaTagihan > 0) || totalAkumulasi >= totalBersih;
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto">
+            <div
+              className="w-full max-w-lg rounded-2xl p-6 space-y-4 shadow-2xl my-auto border"
+              style={{ backgroundColor: '#1E1E1E', borderColor: '#333333', color: '#FFFFFF' }}
+            >
+              <div className="flex items-center justify-between border-b border-white/10 pb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center shrink-0">
+                    <CreditCard className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-white">
+                      Pembayaran Ke-2 atau Selanjutnya
+                    </h3>
+                    <p className="text-xs text-slate-400">
+                      {dpModalTarget.namaAcara} — {dpModalTarget.namaKlien}
+                    </p>
+                  </div>
+                </div>
                 <button
                   type="button"
                   onClick={() => setDpModalTarget(null)}
-                  className="px-4 py-2 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-100 cursor-pointer"
+                  className="text-white/60 hover:text-white p-1 rounded-lg hover:bg-white/10 cursor-pointer"
                 >
-                  Batal
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 rounded-lg bg-[#27AE60] text-xs font-bold text-white cursor-pointer"
-                >
-                  Simpan DP
+                  <X className="w-5 h-5" />
                 </button>
               </div>
-            </form>
+
+              {/* Rincian Perhitungan Keuangan: Menghitung Sisa Pembayaran */}
+              <div className="grid grid-cols-3 gap-2 p-3 rounded-xl bg-black/40 border border-white/10 text-center">
+                <div className="p-2 rounded-lg bg-white/5">
+                  <p className="text-[10px] text-white/60 font-medium">Total Harga</p>
+                  <p className="text-xs sm:text-sm font-bold text-white mt-0.5">
+                    {keRupiah(totalBersih)}
+                  </p>
+                </div>
+                <div className="p-2 rounded-lg bg-white/5">
+                  <p className="text-[10px] text-white/60 font-medium">
+                    {sudahDibayarLama > 0 ? 'Sudah Masuk (DP)' : 'Belum Ada DP'}
+                  </p>
+                  <p className="text-xs sm:text-sm font-bold text-amber-400 mt-0.5">
+                    {keRupiah(sudahDibayarLama)}
+                  </p>
+                </div>
+                <div className="p-2 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                  <p className="text-[10px] text-amber-300 font-bold">Sisa Pembayaran</p>
+                  <p className="text-xs sm:text-sm font-extrabold text-rose-400 mt-0.5">
+                    {keRupiah(sisaTagihan)}
+                  </p>
+                </div>
+              </div>
+
+              <form onSubmit={handleSaveDpModal} className="space-y-4">
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-xs font-bold text-white/90">
+                      Nominal Pembayaran Diterima Sekarang (Rp):
+                    </label>
+                    {sisaTagihan > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setDpModalInputStr(formatRibuanInput(String(sisaTagihan)))}
+                        className="text-[11px] font-extrabold text-emerald-400 hover:text-emerald-300 underline cursor-pointer"
+                      >
+                        ⚡ Pas Sisa ({keRupiah(sisaTagihan)})
+                      </button>
+                    )}
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="Contoh: 500.000 atau ketik nominal"
+                    value={dpModalInputStr}
+                    onChange={(e) => setDpModalInputStr(formatRibuanInput(e.target.value))}
+                    className="w-full rounded-xl bg-black/50 border border-white/20 px-4 py-3 text-base font-mono font-bold text-white focus:outline-hidden focus:border-amber-400 transition-colors"
+                    autoFocus
+                  />
+                </div>
+
+                {/* Indikator Otomatis Status Hasil Pembayaran */}
+                {nominalInput > 0 && (
+                  <div
+                    className={`p-3.5 rounded-xl border text-xs space-y-1.5 transition-all ${
+                      isAkanLunas
+                        ? 'bg-emerald-950/70 border-emerald-500/60 text-emerald-200'
+                        : 'bg-sky-950/70 border-sky-500/60 text-sky-200'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 font-bold">
+                      {isAkanLunas ? (
+                        <>
+                          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                          <span className="text-emerald-300 font-extrabold">
+                            INDIKATOR LUNAS: Pembayaran ini melunasi seluruh sisa tagihan!
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          <CreditCard className="w-4 h-4 text-sky-400 shrink-0" />
+                          <span className="text-sky-300 font-extrabold">
+                            PEMBAYARAN KE-2 / CICILAN: Akumulasi dana bertambah!
+                          </span>
+                        </>
+                      )}
+                    </div>
+                    <div className="text-[11px] opacity-90 pl-6 space-y-0.5">
+                      <p>
+                        Total akumulasi dana masuk:{' '}
+                        <strong className="text-white font-mono">{keRupiah(totalAkumulasi)}</strong>
+                      </p>
+                      <p>
+                        Sisa tagihan berikutnya:{' '}
+                        <strong className={isAkanLunas ? 'text-emerald-300 font-mono' : 'text-rose-300 font-mono'}>
+                          {keRupiah(sisaSetelahBayar)}
+                        </strong>
+                        {isAkanLunas ? ' (Status otomatis menjadi LUNAS 🟢)' : ' (Status tetap DP / Cicilan 🟡)'}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex justify-end gap-2 pt-2 border-t border-white/10">
+                  <button
+                    type="button"
+                    onClick={() => setDpModalTarget(null)}
+                    className="px-4 py-2.5 rounded-xl text-xs font-bold text-white/70 hover:bg-white/10 cursor-pointer transition-colors"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    type="submit"
+                    className={`px-5 py-2.5 rounded-xl text-xs font-bold text-white cursor-pointer transition-all flex items-center gap-1.5 shadow-lg ${
+                      isAkanLunas
+                        ? 'bg-emerald-600 hover:bg-emerald-500'
+                        : 'bg-amber-600 hover:bg-amber-500'
+                    }`}
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>{isAkanLunas ? 'Simpan & Tandai Lunas' : 'Simpan Pembayaran Ke-2'}</span>
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* ===================================================================== */}
       {/* MODAL DAFTAR PESANAN DARI WEBSITE KLIEN (flNotifWeb)                  */}
@@ -3298,81 +3861,734 @@ export default function App() {
       {/* ===================================================================== */}
       {temaModalOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto"
           onClick={() => setTemaModalOpen(false)}
         >
           <div
-            className="w-full max-w-md rounded-2xl p-6 space-y-4 border"
-            style={{ backgroundColor: '#1E1E1E', borderColor: '#333333', color: '#FFFFFF' }}
+            className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl p-6 space-y-6 border shadow-2xl my-auto"
+            style={{ backgroundColor: '#1A1E24', borderColor: '#333D4B', color: '#FFFFFF' }}
             onClick={(e) => e.stopPropagation()}
           >
+            {/* Header Modal */}
             <div className="flex items-center justify-between border-b border-white/10 pb-3">
-              <h3 className="text-base font-bold">Pengaturan Tampilan &amp; Tema APK</h3>
+              <div className="flex items-center gap-2.5">
+                <div
+                  className="w-8 h-8 rounded-xl flex items-center justify-center text-white shadow-sm"
+                  style={{ backgroundColor: navThemeColor }}
+                >
+                  <Palette className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">Pengaturan Tema &amp; Navigasi APK</h3>
+                  <p className="text-[11px] text-white/60">Sesuaikan warna bar, toolbar &amp; latar belakang wallpaper</p>
+                </div>
+              </div>
               <button
                 type="button"
                 onClick={() => setTemaModalOpen(false)}
-                className="text-white/70 hover:text-white cursor-pointer"
+                className="text-white/70 hover:text-white p-1 rounded-lg hover:bg-white/10 transition-colors cursor-pointer"
               >
-                <X className="w-4 h-4" />
+                <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="space-y-2">
-              <label className="block text-xs font-bold text-white/80">
-                1. Pilih Warna Latar Belakang &amp; Navigasi:
-              </label>
-              <div className="grid grid-cols-1 gap-2">
-                {DAFTAR_WARNA_TEMA_APK.map((w) => (
-                  <button
-                    key={w.kode}
-                    type="button"
-                    onClick={async () => {
-                      setOwner((prev) => ({ ...prev, warnaTema: w.kode }));
-                      if (sessionMode === 'FIREBASE') {
-                        await saveOwnerProfileToFirebase(targetOwnerId, { warnaTema: w.kode });
-                      }
-                    }}
-                    className="flex items-center justify-between px-3.5 py-2.5 rounded-xl border text-xs font-bold cursor-pointer"
-                    style={{
-                      backgroundColor: w.kode,
-                      borderColor: owner.warnaTema === w.kode ? '#F39C12' : 'rgba(255,255,255,0.15)',
-                    }}
-                  >
-                    <span>{w.nama}</span>
-                    {owner.warnaTema === w.kode && (
-                      <span className="text-[#F39C12] font-extrabold">AKTIF</span>
-                    )}
-                  </button>
-                ))}
+            {/* Input file tersembunyi untuk upload foto background kustom */}
+            <input
+              ref={bgFileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleBackgroundUpload}
+              className="hidden"
+            />
+
+            {/* ================================================================= */}
+            {/* SEKSI 1: WARNA & LATAR BELAKANG NAVIGASI, BAR & TOOLBAR           */}
+            {/* ================================================================= */}
+            <div className="space-y-3 p-4 rounded-xl border border-sky-500/20 bg-sky-950/20">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-sky-400 animate-pulse" />
+                    <label className="text-xs font-bold text-sky-300 uppercase tracking-wide">
+                      1. Warna &amp; Latar Belakang Navigasi (Bar &amp; Toolbar)
+                    </label>
+                  </div>
+                  <p className="text-[11px] text-white/75 mt-1 leading-relaxed">
+                    Fokus mengatur warna <strong>Header Atas</strong>, <strong>Sidebar Desktop</strong>, <strong>Bottom Nav Mobile</strong>, dan <strong>Toolbar Tombol Cepat</strong>. Latar belakang utama aplikasi <em>tidak terpengaruh</em> dan tetap diatur oleh wallpaper.
+                  </p>
+                </div>
+              </div>
+
+              {/* Palet 10 Warna Populer */}
+              <div className="space-y-1.5 pt-1">
+                <span className="text-[11px] font-bold text-white/80">Pilih Warna Navigasi &amp; Toolbar:</span>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {DAFTAR_WARNA_TEMA_APK.map((w) => {
+                    const isAktif = (owner.warnaTema || '#34495E') === w.kode;
+                    return (
+                      <button
+                        key={w.kode}
+                        type="button"
+                        onClick={async () => {
+                          setOwner((prev) => ({ ...prev, warnaTema: w.kode }));
+                          if (sessionMode === 'FIREBASE') {
+                            await saveOwnerProfileToFirebase(targetOwnerId, { warnaTema: w.kode });
+                          }
+                        }}
+                        className={`flex items-center justify-between px-3 py-2 rounded-xl border text-xs font-bold cursor-pointer transition-all ${
+                          isAktif ? 'ring-2 ring-amber-400 ring-offset-1 ring-offset-black shadow-md' : 'opacity-90 hover:opacity-100'
+                        }`}
+                        style={{
+                          backgroundColor: w.kode,
+                          borderColor: isAktif ? '#F39C12' : 'rgba(255,255,255,0.2)',
+                          color: '#FFFFFF',
+                        }}
+                      >
+                        <span className="truncate text-[11px] drop-shadow-xs">{w.nama.split(' ')[0]}</span>
+                        {isAktif && (
+                          <span className="bg-amber-400 text-slate-950 font-black text-[9px] px-1.5 py-0.2 rounded shadow-xs">
+                            AKTIF
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Pemilih Warna Bebas (Custom Color Picker) */}
+              <div className="flex items-center gap-3 bg-black/40 p-2.5 rounded-xl border border-white/10">
+                <label className="text-xs text-white/80 font-bold shrink-0">Warna Bebas / Kustom:</label>
+                <input
+                  type="color"
+                  value={owner.warnaTema || '#34495E'}
+                  onChange={async (e) => {
+                    const customColor = e.target.value;
+                    setOwner((prev) => ({ ...prev, warnaTema: customColor }));
+                    if (sessionMode === 'FIREBASE') {
+                      await saveOwnerProfileToFirebase(targetOwnerId, { warnaTema: customColor });
+                    }
+                  }}
+                  className="w-8 h-8 rounded-lg cursor-pointer bg-transparent border-0 p-0"
+                  title="Pilih warna navigasi kustom"
+                />
+                <input
+                  type="text"
+                  value={owner.warnaTema || '#34495E'}
+                  onChange={async (e) => {
+                    const customColor = e.target.value;
+                    setOwner((prev) => ({ ...prev, warnaTema: customColor }));
+                    if (sessionMode === 'FIREBASE' && /^#[0-9A-Fa-f]{6}$/.test(customColor)) {
+                      await saveOwnerProfileToFirebase(targetOwnerId, { warnaTema: customColor });
+                    }
+                  }}
+                  placeholder="#34495E"
+                  className="w-28 px-2 py-1 text-xs font-mono font-bold uppercase rounded-lg bg-black/50 border border-white/20 text-amber-300 text-center"
+                />
+                <span className="text-[10px] text-white/50 truncate">Hex bar warna</span>
+              </div>
+
+              {/* Gaya Latar Belakang Navigasi (Solid vs Glass vs Gradient vs Dark Accent) */}
+              <div className="space-y-1.5 pt-2 border-t border-white/10">
+                <span className="text-[11px] font-bold text-white/80">Gaya Efek Latar Navigasi &amp; Toolbar:</span>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { id: 'SOLID', label: 'Solid Elegan', desc: 'Pekat & Kontras' },
+                    { id: 'GLASS', label: 'Kaca Transparan', desc: 'Backdrop Blur Kaca' },
+                    { id: 'GRADIENT', label: 'Gradien Modern', desc: 'Nuansa Gradasi Mewah' },
+                    { id: 'DARK_ACCENT', label: 'Aksen Gelap', desc: 'Bar Gelap + Garis Aksen' },
+                  ].map((styleOpt) => {
+                    const isSelected = (owner.gayaLatarNavigasi || 'SOLID') === styleOpt.id;
+                    return (
+                      <button
+                        key={styleOpt.id}
+                        type="button"
+                        onClick={async () => {
+                          const val = styleOpt.id as 'SOLID' | 'GLASS' | 'GRADIENT' | 'DARK_ACCENT';
+                          setOwner((prev) => ({ ...prev, gayaLatarNavigasi: val }));
+                          if (sessionMode === 'FIREBASE') {
+                            await saveOwnerProfileToFirebase(targetOwnerId, { gayaLatarNavigasi: val });
+                          }
+                        }}
+                        className={`p-2.5 rounded-xl border text-left cursor-pointer transition-all ${
+                          isSelected
+                            ? 'bg-sky-600/30 border-sky-400 text-white shadow-sm ring-1 ring-sky-400'
+                            : 'bg-black/30 border-white/15 text-white/70 hover:text-white'
+                        }`}
+                      >
+                        <p className="text-xs font-bold">{styleOpt.label}</p>
+                        <p className="text-[10px] text-white/50">{styleOpt.desc}</p>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Slider Opasitas Navigasi */}
+              <div className="space-y-1.5 pt-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-[11px] font-bold text-white/80">
+                    Transparansi Bar &amp; Toolbar:
+                  </span>
+                  <span className="font-mono font-bold text-xs text-sky-400">
+                    {owner.opasitasNavigasi ?? 95}%
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min="60"
+                  max="100"
+                  step="5"
+                  value={owner.opasitasNavigasi ?? 95}
+                  onChange={async (e) => {
+                    const val = Number(e.target.value);
+                    setOwner((prev) => ({ ...prev, opasitasNavigasi: val }));
+                    if (sessionMode === 'FIREBASE') {
+                      await saveOwnerProfileToFirebase(targetOwnerId, { opasitasNavigasi: val });
+                    }
+                  }}
+                  className="w-full accent-sky-400 cursor-pointer h-2 bg-white/20 rounded-lg"
+                />
+                <div className="flex justify-between text-[10px] text-white/50">
+                  <span>60% (Transparan)</span>
+                  <span>80% (Sedang)</span>
+                  <span>100% (Solid Pekat)</span>
+                </div>
               </div>
             </div>
 
-            <div className="space-y-2 pt-2 border-t border-white/10">
-              <label className="block text-xs font-bold text-white/80">
-                2. Pilih Gaya Kartu Kaca (Glassmorphism):
+            {/* ================================================================= */}
+            {/* SEKSI 2: LATAR BELAKANG UTAMA (WALLPAPER TERANG / GELAP)          */}
+            {/* ================================================================= */}
+            <div className="space-y-3 p-4 rounded-xl border border-amber-500/20 bg-amber-950/15">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-amber-400" />
+                    <label className="text-xs font-bold text-amber-300 uppercase tracking-wide">
+                      2. Latar Belakang Utama Aplikasi (Diatur Oleh Wallpaper)
+                    </label>
+                  </div>
+                  <p className="text-[11px] text-white/75 mt-1 leading-relaxed">
+                    Latar belakang utama diatur oleh foto wallpaper atau mode netral terang/gelap di bawah ini.
+                  </p>
+                </div>
+              </div>
+
+              {/* Mode Dasar Background jika Tanpa Foto (Terang vs Gelap) */}
+              <div className="space-y-1.5">
+                <span className="text-[11px] font-bold text-white/80">Mode Dasar Layar Utama:</span>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      setOwner((prev) => ({ ...prev, isKacaGelap: true }));
+                      if (sessionMode === 'FIREBASE') {
+                        await saveOwnerProfileToFirebase(targetOwnerId, { isKacaGelap: true });
+                      }
+                    }}
+                    className={`py-2 px-3 rounded-xl text-xs font-bold border cursor-pointer transition-all flex items-center justify-center gap-2 ${
+                      isKacaGelap
+                        ? 'bg-slate-900 border-amber-400 text-white shadow-md'
+                        : 'bg-black/30 border-white/15 text-white/60 hover:text-white'
+                    }`}
+                  >
+                    <span>🌙 Mode Gelap (Dark Studio)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      setOwner((prev) => ({ ...prev, isKacaGelap: false }));
+                      if (sessionMode === 'FIREBASE') {
+                        await saveOwnerProfileToFirebase(targetOwnerId, { isKacaGelap: false });
+                      }
+                    }}
+                    className={`py-2 px-3 rounded-xl text-xs font-bold border cursor-pointer transition-all flex items-center justify-center gap-2 ${
+                      !isKacaGelap
+                        ? 'bg-slate-100 text-slate-900 border-white font-extrabold shadow-md'
+                        : 'bg-white/10 border-white/15 text-white/60 hover:text-white'
+                    }`}
+                  >
+                    <span>☀️ Mode Terang (Light Studio)</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Opsi Upload Wallpaper Foto Kustom */}
+              <div className="space-y-2 pt-2 border-t border-white/10">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-white/80">Foto / Wallpaper Kustom:</span>
+                  {owner.customBackgroundUrl && (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const updates = { customBackgroundUrl: '' };
+                        setOwner((prev) => ({ ...prev, ...updates }));
+                        if (sessionMode === 'FIREBASE') {
+                          await saveOwnerProfileToFirebase(targetOwnerId, updates);
+                        }
+                        setToastMessage('Foto wallpaper dihapus (kembali ke latar solid netral)');
+                        setTimeout(() => setToastMessage(null), 3000);
+                      }}
+                      className="flex items-center gap-1 text-[11px] font-bold text-rose-400 hover:text-rose-300 transition-colors cursor-pointer"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Hapus Foto</span>
+                    </button>
+                  )}
+                </div>
+
+                {/* Tombol Kolom Upload Foto */}
+                <div
+                  onClick={() => bgFileInputRef.current?.click()}
+                  className="group border-2 border-dashed border-white/20 hover:border-amber-400/70 rounded-xl p-3 flex flex-col items-center justify-center text-center cursor-pointer transition-all bg-white/[0.03] hover:bg-white/[0.06]"
+                >
+                  <div className="w-8 h-8 rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center mb-1 group-hover:scale-110 transition-transform">
+                    <Upload className="w-4 h-4" />
+                  </div>
+                  <p className="text-xs font-bold text-white">
+                    Klik di Sini untuk Upload Foto Wallpaper
+                  </p>
+                  <p className="text-[10px] text-white/60">
+                    Bisa foto karya foto studio, wedding, atau pemandangan (JPG/PNG)
+                  </p>
+                </div>
+
+                {/* Pratinjau Foto Aktif jika Ada */}
+                {owner.customBackgroundUrl && (
+                  <div className="relative rounded-xl overflow-hidden border border-white/15 h-20 flex items-end p-2.5">
+                    <div
+                      className="absolute inset-0 bg-cover bg-center"
+                      style={{
+                        backgroundImage: `url(${owner.customBackgroundUrl})`,
+                        filter: `blur(${owner.customBackgroundBlur ?? 8}px)`,
+                        transform: 'scale(1.12)',
+                      }}
+                    />
+                    <div
+                      className="absolute inset-0"
+                      style={{
+                        backgroundColor: owner.customBackgroundOverlayType === 'PUTIH' ? '#FFFFFF' : '#000000',
+                        opacity: (owner.customBackgroundOpacity ?? 60) / 100,
+                      }}
+                    />
+                    <div className="relative z-10 flex items-center justify-between w-full">
+                      <span className="text-[10px] font-bold text-white bg-black/60 px-2 py-0.5 rounded backdrop-blur-sm">
+                        Wallpaper Aktif ({owner.customBackgroundOverlayType === 'PUTIH' ? 'Nuansa Terang' : 'Nuansa Gelap'})
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => bgFileInputRef.current?.click()}
+                        className="text-[10px] font-bold text-amber-300 hover:text-amber-200 bg-black/70 px-2 py-0.5 rounded cursor-pointer backdrop-blur-sm"
+                      >
+                        Ganti Foto
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Slider Blur Foto Wallpaper */}
+                {owner.customBackgroundUrl && (
+                  <div className="space-y-1.5 bg-black/30 rounded-xl p-2.5 border border-white/10">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-bold text-white/90 flex items-center gap-1.5 text-[11px]">
+                        <Sliders className="w-3.5 h-3.5 text-amber-400" />
+                        Blur Wallpaper:
+                      </span>
+                      <span className="font-mono font-bold text-amber-400 text-xs px-2 py-0.5 rounded bg-amber-400/10 border border-amber-400/20">
+                        {owner.customBackgroundBlur ?? 8} px
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0"
+                      max="25"
+                      step="1"
+                      value={owner.customBackgroundBlur ?? 8}
+                      onChange={async (e) => {
+                        const blurVal = Number(e.target.value);
+                        setOwner((prev) => ({ ...prev, customBackgroundBlur: blurVal }));
+                        if (sessionMode === 'FIREBASE') {
+                          await saveOwnerProfileToFirebase(targetOwnerId, { customBackgroundBlur: blurVal });
+                        }
+                      }}
+                      className="w-full accent-amber-500 cursor-pointer h-2 bg-white/20 rounded-lg"
+                    />
+                  </div>
+                )}
+
+                {/* Nuansa Overlay Wallpaper (Terang / Gelap) */}
+                {owner.customBackgroundUrl && (
+                  <div className="space-y-2 bg-black/30 rounded-xl p-2.5 border border-white/10">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-bold text-white/90 text-[11px]">Nuansa Lapisan Wallpaper:</span>
+                      <span className="text-[11px] font-bold text-amber-300">
+                        {owner.customBackgroundOverlayType === 'PUTIH' ? '⬜ Putih (Terang)' : '⬛ Hitam (Gelap)'}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          const updates = { customBackgroundOverlayType: 'HITAM' as const };
+                          setOwner((prev) => ({ ...prev, ...updates }));
+                          if (sessionMode === 'FIREBASE') {
+                            await saveOwnerProfileToFirebase(targetOwnerId, updates);
+                          }
+                        }}
+                        className={`py-1.5 px-2.5 rounded-lg text-xs font-bold border cursor-pointer transition-all ${
+                          owner.customBackgroundOverlayType !== 'PUTIH'
+                            ? 'bg-black border-amber-400 text-white shadow-sm'
+                            : 'bg-black/40 border-white/15 text-white/60'
+                        }`}
+                      >
+                        ⬛ Lapisan Gelap
+                      </button>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          const updates = { customBackgroundOverlayType: 'PUTIH' as const };
+                          setOwner((prev) => ({ ...prev, ...updates }));
+                          if (sessionMode === 'FIREBASE') {
+                            await saveOwnerProfileToFirebase(targetOwnerId, updates);
+                          }
+                        }}
+                        className={`py-1.5 px-2.5 rounded-lg text-xs font-bold border cursor-pointer transition-all ${
+                          owner.customBackgroundOverlayType === 'PUTIH'
+                            ? 'bg-white text-slate-900 border-white font-extrabold shadow-sm'
+                            : 'bg-white/10 border-white/15 text-white/60'
+                        }`}
+                      >
+                        ⬜ Lapisan Terang
+                      </button>
+                    </div>
+
+                    {/* Slider Kepekatan Overlay Wallpaper */}
+                    <div className="space-y-1 pt-1 border-t border-white/10">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-[11px] text-white/80">
+                          Kepekatan Lapisan Wallpaper:
+                        </span>
+                        <span className="font-mono font-bold text-xs text-sky-400">
+                          {owner.customBackgroundOpacity ?? 60}%
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min="0"
+                        max="90"
+                        step="5"
+                        value={owner.customBackgroundOpacity ?? 60}
+                        onChange={async (e) => {
+                          const opVal = Number(e.target.value);
+                          setOwner((prev) => ({ ...prev, customBackgroundOpacity: opVal }));
+                          if (sessionMode === 'FIREBASE') {
+                            await saveOwnerProfileToFirebase(targetOwnerId, { customBackgroundOpacity: opVal });
+                          }
+                        }}
+                        className="w-full accent-sky-400 cursor-pointer h-2 bg-white/20 rounded-lg"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* ================================================================= */}
+            {/* SEKSI 3: GAYA KARTU KACA KALENDER & JADWAL (GLASSMORPHISM)        */}
+            {/* ================================================================= */}
+            <div className="space-y-2.5 p-4 rounded-xl border border-white/10 bg-black/25">
+              <label className="block text-xs font-bold text-white/80 uppercase tracking-wide">
+                3. Transparansi Kartu Kalender &amp; Jadwal
               </label>
-              <div className="grid grid-cols-2 gap-2">
+
+              {/* Slider Transparansi Kaca Kartu */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-[11px] font-bold text-white/80">
+                    Kepekatan Kartu Agenda:
+                  </span>
+                  <span className="font-mono font-bold text-xs text-amber-400">
+                    {owner.opasitasKartu ?? (owner.customBackgroundUrl ? 58 : 70)}%
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min="30"
+                  max="90"
+                  step="5"
+                  value={owner.opasitasKartu ?? (owner.customBackgroundUrl ? 58 : 70)}
+                  onChange={async (e) => {
+                    const val = Number(e.target.value);
+                    setOwner((prev) => ({ ...prev, opasitasKartu: val }));
+                    if (sessionMode === 'FIREBASE') {
+                      await saveOwnerProfileToFirebase(targetOwnerId, { opasitasKartu: val });
+                    }
+                  }}
+                  className="w-full accent-amber-500 cursor-pointer h-2 bg-white/20 rounded-lg"
+                />
+                <div className="flex justify-between text-[10px] text-white/50">
+                  <span>30% (Transparan)</span>
+                  <span>58% (Sedang Elegan)</span>
+                  <span>90% (Pekat)</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Tombol Simpan & Tutup */}
+            <div className="pt-2 border-t border-white/10 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setTemaModalOpen(false)}
+                className="w-full sm:w-auto px-6 py-2.5 rounded-xl font-bold text-xs bg-amber-500 hover:bg-amber-400 text-slate-950 transition-colors cursor-pointer shadow-lg hover:shadow-amber-500/25"
+              >
+                Selesai &amp; Simpan Tampilan
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===================================================================== */}
+      {/* MODAL PILIHAN PAKET & PERPANJANG LANGGANAN STUDIO (CHAT ADMIN WA)     */}
+      {/* ===================================================================== */}
+      {langgananModalOpen && (
+        <div
+          className="fixed inset-0 z-[80] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto"
+          onClick={() => setLanggananModalOpen(false)}
+        >
+          <div
+            className="w-full max-w-2xl max-h-[92vh] overflow-y-auto rounded-2xl p-6 space-y-5 border shadow-2xl my-auto"
+            style={{ backgroundColor: '#1E1E1E', borderColor: '#333333', color: '#FFFFFF' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header Modal */}
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center shrink-0">
+                  <Layers className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">
+                    Pilihan Paket &amp; Perpanjang Langganan
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    Kafela&apos;s Agenda • Hubungi Admin via WhatsApp untuk Aktivasi Cepat
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setLanggananModalOpen(false)}
+                className="text-white/60 hover:text-white p-1 rounded-lg hover:bg-white/10 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Status Paket Aktif Saat Ini */}
+            <div className="p-4 rounded-xl bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 border border-white/15 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-xs text-slate-400 font-medium">Paket Aktif Anda:</p>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <span className="text-lg font-black text-[#2ECC71]">
+                    PAKET {owner.paketAktif.toUpperCase()}
+                  </span>
+                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-[#F39C12] text-white">
+                    AKTIF
+                  </span>
+                </div>
+              </div>
+              <div className="text-right">
+                <p className="text-xs text-slate-400 font-medium">Masa Aktif Tersisa:</p>
+                <p className="text-base font-black text-amber-300 mt-0.5">
+                  {sisaHariLangganan} Hari Lagi
+                </p>
+              </div>
+            </div>
+
+            {/* Toggle Durasi: Bulanan vs Tahunan */}
+            <div className="flex items-center justify-between pt-1">
+              <div>
+                <span className="text-xs font-bold text-white/90 block">Pilih Skema Durasi:</span>
+                <span className="text-[11px] text-slate-400">Pilih durasi sebelum chat ke admin</span>
+              </div>
+              <div className="flex items-center p-1 rounded-xl bg-black/50 border border-white/15 text-xs">
                 <button
                   type="button"
-                  onClick={() => setOwner((prev) => ({ ...prev, isKacaGelap: true }))}
-                  className={`py-2.5 rounded-xl text-xs font-bold border cursor-pointer ${
-                    isKacaGelap
-                      ? 'bg-[#2980B9] border-white text-white'
-                      : 'bg-black/40 border-white/15 text-white/70'
+                  onClick={() => setDurasiPerpanjang('BULANAN')}
+                  className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
+                    durasiPerpanjang === 'BULANAN'
+                      ? 'bg-[#2980B9] text-white shadow'
+                      : 'text-white/60 hover:text-white'
                   }`}
                 >
-                  Kaca Gelap (Elegan)
+                  Bulanan
                 </button>
                 <button
                   type="button"
-                  onClick={() => setOwner((prev) => ({ ...prev, isKacaGelap: false }))}
-                  className={`py-2.5 rounded-xl text-xs font-bold border cursor-pointer ${
-                    !isKacaGelap
-                      ? 'bg-[#2980B9] border-white text-white'
-                      : 'bg-white text-slate-900 border-white/15'
+                  onClick={() => setDurasiPerpanjang('TAHUNAN')}
+                  className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                    durasiPerpanjang === 'TAHUNAN'
+                      ? 'bg-amber-500 text-slate-950 shadow font-extrabold'
+                      : 'text-white/60 hover:text-white'
                   }`}
                 >
-                  Kaca Terang (Bersih)
+                  <span>Tahunan</span>
+                  <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-red-600 text-white font-black">
+                    HEMAT
+                  </span>
+                </button>
+              </div>
+            </div>
+
+            {/* Kartu Pilihan Paket (Starter, Pro, Ultimate) */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
+              {[
+                {
+                  tier: 'Starter' as const,
+                  title: 'Paket Starter',
+                  subtitle: 'Standar Studio HP',
+                  price: durasiPerpanjang === 'TAHUNAN' ? 'Rp 158.400' : 'Rp 16.500',
+                  period: durasiPerpanjang === 'TAHUNAN' ? '/ tahun' : '/ bulan',
+                  highlight: 'Khusus Usaha Mandiri',
+                  badgeColor: 'bg-slate-700',
+                  features: [
+                    '1 Owner (0 Admin, 0 Crew)',
+                    'Maksimal 100 Jadwal / Bulan',
+                    'Aplikasi HP & PWA Standalone',
+                    'Kasir Cepat & Struk Digital',
+                    'Pengingat WhatsApp Otomatis',
+                  ],
+                },
+                {
+                  tier: 'Pro' as const,
+                  title: 'Paket Pro',
+                  subtitle: 'Paling Populer & Lengkap',
+                  price: durasiPerpanjang === 'TAHUNAN' ? 'Rp 432.000' : 'Rp 45.000',
+                  period: durasiPerpanjang === 'TAHUNAN' ? '/ tahun' : '/ bulan',
+                  highlight: '⭐ TERLARIS & REKOMENDASI',
+                  badgeColor: 'bg-blue-600',
+                  features: [
+                    '1 Owner & 1 Admin Studio',
+                    'Maksimal 300 Jadwal / Bulan',
+                    'Akses Kasir PC & Aplikasi HP',
+                    'Link Website Booking & Portofolio',
+                    'Laporan Keuangan & Piutang Lengkap',
+                  ],
+                },
+                {
+                  tier: 'Ultimate' as const,
+                  title: 'Paket Ultimate',
+                  subtitle: 'Multi-Tim & Tanpa Batas',
+                  price: durasiPerpanjang === 'TAHUNAN' ? 'Rp 1.334.400' : 'Rp 139.000',
+                  period: durasiPerpanjang === 'TAHUNAN' ? '/ tahun' : '/ bulan',
+                  highlight: '👑 UNLIMITED & LIVE SYNC',
+                  badgeColor: 'bg-amber-600',
+                  features: [
+                    '1 Owner, 2 Admin & 10 Crew',
+                    'Jadwal Unlimited Tanpa Batas',
+                    'Kasir PC Live Sync Real-time',
+                    'Website Profil Utama + Sekunder',
+                    'Prioritas Support Admin 24/7',
+                  ],
+                },
+              ].map((pkt) => {
+                const isCurrentActive = owner.paketAktif.toLowerCase() === pkt.tier.toLowerCase();
+                const isSelected = pilihanPaketTarget === pkt.tier;
+
+                return (
+                  <div
+                    key={pkt.tier}
+                    onClick={() => setPilihanPaketTarget(pkt.tier)}
+                    className={`rounded-2xl p-4 border flex flex-col justify-between transition-all cursor-pointer relative ${
+                      isSelected
+                        ? 'bg-sky-950/40 border-amber-400 shadow-xl ring-2 ring-amber-400/30'
+                        : isCurrentActive
+                        ? 'bg-slate-900/90 border-emerald-500/60'
+                        : 'bg-black/40 border-white/10 hover:border-white/30'
+                    }`}
+                  >
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full text-white ${pkt.badgeColor}`}
+                        >
+                          {pkt.highlight}
+                        </span>
+                        {isCurrentActive && (
+                          <span className="text-[10px] font-bold text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-500/30">
+                            Aktif
+                          </span>
+                        )}
+                      </div>
+
+                      <h4 className="font-extrabold text-base text-white mt-1">{pkt.title}</h4>
+                      <p className="text-[11px] text-slate-400">{pkt.subtitle}</p>
+
+                      <div className="my-3 py-2 border-y border-white/10">
+                        <span className="text-lg font-black text-amber-300 font-mono">
+                          {pkt.price}
+                        </span>
+                        <span className="text-[11px] text-slate-400 ml-1">{pkt.period}</span>
+                      </div>
+
+                      <ul className="space-y-1.5 text-[11px] text-slate-300">
+                        {pkt.features.map((f, idx) => (
+                          <li key={idx} className="flex items-start gap-1.5">
+                            <span className="text-emerald-400 font-bold">✓</span>
+                            <span>{f}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+
+                    <div className="mt-4 pt-3 border-t border-white/10">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setPilihanPaketTarget(pkt.tier);
+                          handleChatAdminPerpanjang(pkt.tier);
+                        }}
+                        className={`w-full py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow ${
+                          isSelected
+                            ? 'bg-[#27AE60] hover:bg-[#219653] text-white shadow-emerald-900/50'
+                            : 'bg-white/10 hover:bg-white/20 text-white'
+                        }`}
+                      >
+                        <MessageCircle className="w-3.5 h-3.5" />
+                        <span>Perpanjang {pkt.tier} (Chat WA)</span>
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Tombol Utama Chat Admin WhatsApp untuk Perpanjangan */}
+            <div className="pt-3 border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-3">
+              <div className="text-xs text-slate-400">
+                Pilihan saat ini: <strong className="text-white">Paket {pilihanPaketTarget}</strong> ({durasiPerpanjang === 'TAHUNAN' ? 'Tahunan' : 'Bulanan'})
+                <span className="block text-[11px] text-emerald-400 mt-0.5 font-medium">
+                  CS Admin WhatsApp: 0831-3230-4649
+                </span>
+              </div>
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                <button
+                  type="button"
+                  onClick={() => setLanggananModalOpen(false)}
+                  className="px-4 py-2.5 rounded-xl text-xs font-bold text-white/70 hover:bg-white/10 cursor-pointer transition-colors"
+                >
+                  Tutup
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleChatAdminPerpanjang()}
+                  className="flex-1 sm:flex-initial px-5 py-2.5 rounded-xl text-xs font-extrabold text-white bg-[#27AE60] hover:bg-[#219653] active:scale-[0.98] transition-all cursor-pointer flex items-center justify-center gap-2 shadow-lg"
+                >
+                  <MessageCircle className="w-4 h-4" />
+                  <span>Chat Admin via WhatsApp untuk Perpanjang</span>
                 </button>
               </div>
             </div>
@@ -3396,8 +4612,21 @@ export default function App() {
         <SignatureAndLogoModal
           owner={owner}
           onSave={async (updates) => {
-            setOwner((prev) => ({ ...prev, ...updates }));
+            setOwner((prev) => {
+              const updatedOwner = { ...prev, ...updates };
+              try {
+                const raw = localStorage.getItem(LOCAL_CACHE_KEY);
+                if (raw) {
+                  const parsed = JSON.parse(raw);
+                  parsed.owner = updatedOwner;
+                  localStorage.setItem(LOCAL_CACHE_KEY, JSON.stringify(parsed));
+                }
+              } catch {}
+              return updatedOwner;
+            });
             setSignatureModalOpen(false);
+            setToastMessage('✓ Pengaturan logo & tanda tangan struk tersimpan');
+            setTimeout(() => setToastMessage(null), 3000);
             if (sessionMode === 'FIREBASE') {
               await saveOwnerProfileToFirebase(targetOwnerId, updates);
             }

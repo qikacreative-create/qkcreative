@@ -1,4 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { toPng } from 'html-to-image';
+
 import {
   CheckCircle2,
   Printer,
@@ -7,6 +9,11 @@ import {
   X,
   FileImage,
   Share2,
+  Check,
+  MessageCircle,
+  Receipt,
+  Download,
+  AlertCircle,
 } from 'lucide-react';
 import { JadwalFotografi, OwnerProfile, RekeningModel } from '../types/kafela';
 import {
@@ -15,6 +22,7 @@ import {
   formatTanggalIndo,
   keRupiah,
 } from '../utils/formatters';
+import { getMedia } from '../services/localDb';
 
 interface StrukModalProps {
   jadwal: JadwalFotografi;
@@ -45,16 +53,55 @@ const KNOWN_PRINTER_CHARACTERISTICS = [
 export const StrukModal: React.FC<StrukModalProps> = ({
   jadwal,
   owner,
+  rekening,
   namaAdminAktif,
   onClose,
 }) => {
   const [isGeneratingPng, setIsGeneratingPng] = useState(false);
   const [btStatus, setBtStatus] = useState<string | null>(null);
   const [showRawBtFallback, setShowRawBtFallback] = useState(false);
+  const [localLogoUrl, setLocalLogoUrl] = useState<string | null>(null);
+  const [localTtdUrl, setLocalTtdUrl] = useState<string | null>(null);
+  const [copiedWA, setCopiedWA] = useState(false);
+  const [invoiceMode, setInvoiceMode] = useState<'THERMAL' | 'A4'>('THERMAL');
+
+  useEffect(() => {
+    const loadMedia = async () => {
+      // Prioritaskan Base64 dari Profil Owner Firestore
+      if (owner.logoBrandUrl && owner.logoBrandUrl !== 'local:logo') {
+        setLocalLogoUrl(owner.logoBrandUrl);
+      } else {
+        const cached = await getMedia('logo');
+        if (cached) {
+          setLocalLogoUrl(typeof cached === 'string' ? cached : URL.createObjectURL(cached));
+        }
+      }
+
+      // Prioritaskan Base64 dari Profil Owner Firestore
+      if (owner.ttdUrl && owner.ttdUrl !== 'local:ttd') {
+        setLocalTtdUrl(owner.ttdUrl);
+      } else {
+        const cached = await getMedia('ttd');
+        if (cached) {
+          setLocalTtdUrl(typeof cached === 'string' ? cached : URL.createObjectURL(cached));
+        }
+      }
+    };
+    loadMedia();
+  }, [owner.logoBrandUrl, owner.ttdUrl]);
+
+  const finalLogoUrl =
+    (owner.logoBrandUrl && owner.logoBrandUrl !== 'local:logo' ? owner.logoBrandUrl : null) ||
+    localLogoUrl ||
+    '';
+  const finalTtdUrl =
+    (owner.ttdUrl && owner.ttdUrl !== 'local:ttd' ? owner.ttdUrl : null) ||
+    localTtdUrl ||
+    '';
 
   const adminName = namaAdminAktif || owner.namaOwner || owner.namaBrand || 'Admin Studio';
   const isLunas = (jadwal.status || '').toLowerCase() === 'lunas';
-  const noStruk = (jadwal.idJadwal || 'INV001').slice(0, 8).toUpperCase();
+const noStruk = jadwal.idJadwal || 'INV001';
   const tanggalBayar = formatTanggalIndo(Date.now(), true);
 
   const hargaPaketDasar =
@@ -69,263 +116,69 @@ export const StrukModal: React.FC<StrukModalProps> = ({
   const nominalDibayar = isLunas ? tagihanSetelahDiskon : dpDibayar;
 
   const modeLogo = owner.penempatanLogo || 'KEDUANYA';
-  const adaLogo = Boolean(owner.logoBrandUrl) && modeLogo !== 'TIDAK_TAMPIL';
+  const adaLogo = Boolean(finalLogoUrl) && modeLogo !== 'TIDAK_TAMPIL';
   const tampilLogoSamping =
     adaLogo && (modeLogo === 'KEDUANYA' || modeLogo === 'SAMPING');
   const tampilLogoWatermark =
     adaLogo && (modeLogo === 'KEDUANYA' || modeLogo === 'WATERMARK');
-  const adaTtd = Boolean(owner.ttdUrl);
+  const adaTtd = Boolean(finalTtdUrl);
 
   const watermarkBrand = (owner.namaBrand || "KAFELA'S AGENDA").toUpperCase();
+  const alamatStore = owner.lokasi1 || owner.lokasi2 || owner.lokasi3 || 'Studio Utama';
 
   /**
-   * Render struk menjadi gambar PNG beresolusi tinggi (lengkap dengan watermark miring -25°,
-   * logo, rincian harga, dan tanda tangan) persis seperti di aplikasi Android.
-   * Dilengkapi proteksi otomatis terhadap CORS Tainted Canvas.
+   * Mengubah URL gambar apa pun menjadi data Base64 yang aman dari canvas taint
    */
-  const renderCanvasReceipt = async (includeExternalImages: boolean): Promise<string> => {
-    const canvas = document.createElement('canvas');
-    const w = 680;
-    const h = 980;
-    canvas.width = w;
-    canvas.height = h;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return '';
-
-    // 1. Background Kertas Putih Bersih
-    ctx.fillStyle = '#FFFFFF';
-    ctx.fillRect(0, 0, w, h);
-
-    // 2. Watermark Teks Miring Berulang (-25 derajat ala Struk Bank / DANA)
-    ctx.save();
-    ctx.translate(w / 2, h / 2);
-    ctx.rotate((-25 * Math.PI) / 180);
-    ctx.font = '700 22px "Plus Jakarta Sans", sans-serif';
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.045)';
-    const patternText = `${watermarkBrand}     `;
-    const textWidth = ctx.measureText(patternText).width || 240;
-    let row = 0;
-    for (let y = -h; y <= h; y += 68) {
-      const offset = row % 2 === 0 ? 0 : textWidth / 2;
-      for (let x = -w + offset; x <= w; x += textWidth) {
-        ctx.fillText(patternText, x, y);
-      }
-      row++;
+  const ensureSafeDataUrl = async (url: string): Promise<string> => {
+    if (!url) return '';
+    if (url.startsWith('data:')) return url;
+    try {
+      const res = await fetch(url, { mode: 'cors' });
+      if (!res.ok) return url;
+      const blob = await res.blob();
+      return await new Promise<string>((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve((reader.result as string) || url);
+        reader.onerror = () => resolve(url);
+        reader.readAsDataURL(blob);
+      });
+    } catch {
+      return url;
     }
-    ctx.restore();
+  };
 
-    const loadImg = (src: string): Promise<HTMLImageElement | null> =>
-      new Promise((resolve) => {
-        if (!src || !includeExternalImages) return resolve(null);
-        const img = new Image();
-        if (!src.startsWith('data:')) {
-          img.crossOrigin = 'anonymous';
-        }
-        const timer = setTimeout(() => resolve(null), 3500);
-        img.onload = () => {
-          clearTimeout(timer);
-          resolve(img);
-        };
-        img.onerror = () => {
-          clearTimeout(timer);
-          resolve(null);
-        };
-        img.src = src;
+  /**
+   * Render struk menjadi gambar PNG 100% IDENTIK dengan preview
+   * menggunakan html-to-image langsung dari elemen DOM pratinjau.
+   */
+  const renderCanvasReceipt = async (): Promise<string> => {
+    try {
+      const node = document.getElementById('printable-receipt-area');
+      if (!node) {
+        setBtStatus('⚠️ Area preview struk tidak ditemukan.');
+        return '';
+      }
+
+      // Mengambil snapshot elemen preview HTML secara presisi dengan resolusi tinggi (pixelRatio: 2)
+      const dataUrl = await toPng(node, {
+        cacheBust: true,
+        pixelRatio: 2,
+        skipFonts: true,
+        style: {
+          transform: 'none',
+        },
       });
 
-    // 3. Watermark Logo Tengah (Jika Aktif)
-    if (tampilLogoWatermark && owner.logoBrandUrl) {
-      const logoImg = await loadImg(owner.logoBrandUrl);
-      if (logoImg) {
-        ctx.save();
-        ctx.globalAlpha = 0.06;
-        ctx.drawImage(logoImg, w / 2 - 110, h / 2 - 110, 220, 220);
-        ctx.restore();
-      }
+      return dataUrl;
+    } catch (err) {
+      console.error('Gagal export DOM to PNG:', err);
+      setBtStatus('Gagal membuat gambar struk dari preview.');
+      return '';
     }
-
-    let curY = 44;
-
-    // 4. Indikator Sukses Atas
-    ctx.font = '700 16px "Plus Jakarta Sans", sans-serif';
-    ctx.fillStyle = '#2E7D32';
-    ctx.textAlign = 'center';
-    ctx.fillText(
-      isLunas ? '✓ Pembayaran Lunas!' : '✓ Pembayaran Tersimpan!',
-      w / 2,
-      curY
-    );
-    curY += 36;
-
-    // 5. Header Brand & Logo Samping
-    if (tampilLogoSamping && owner.logoBrandUrl) {
-      const logoImg = await loadImg(owner.logoBrandUrl);
-      if (logoImg) {
-        ctx.drawImage(logoImg, w / 2 - 170, curY - 22, 54, 54);
-        ctx.textAlign = 'left';
-        ctx.font = '800 26px "Plus Jakarta Sans", sans-serif';
-        ctx.fillStyle = '#0F172A';
-        ctx.fillText(owner.namaBrand || "Kafela's Agenda", w / 2 - 102, curY + 4);
-        ctx.font = '500 14px "Plus Jakarta Sans", sans-serif';
-        ctx.fillStyle = '#64748B';
-        ctx.fillText('Struk Pembayaran Digital Resmi', w / 2 - 102, curY + 26);
-      } else {
-        ctx.textAlign = 'center';
-        ctx.font = '800 26px "Plus Jakarta Sans", sans-serif';
-        ctx.fillStyle = '#0F172A';
-        ctx.fillText(owner.namaBrand || "Kafela's Agenda", w / 2, curY + 4);
-        ctx.font = '500 14px "Plus Jakarta Sans", sans-serif';
-        ctx.fillStyle = '#64748B';
-        ctx.fillText('Struk Pembayaran Digital Resmi', w / 2, curY + 26);
-      }
-    } else {
-      ctx.textAlign = 'center';
-      ctx.font = '800 26px "Plus Jakarta Sans", sans-serif';
-      ctx.fillStyle = '#0F172A';
-      ctx.fillText(owner.namaBrand || "Kafela's Agenda", w / 2, curY + 4);
-      ctx.font = '500 14px "Plus Jakarta Sans", sans-serif';
-      ctx.fillStyle = '#64748B';
-      ctx.fillText('Struk Pembayaran Digital Resmi', w / 2, curY + 26);
-    }
-    curY += 52;
-
-    if (isLunas) {
-      ctx.textAlign = 'center';
-      ctx.font = '700 16px "Plus Jakarta Sans", sans-serif';
-      ctx.fillStyle = '#2E7D32';
-      ctx.fillText('BUKTI PELUNASAN', w / 2, curY);
-      curY += 28;
-    } else {
-      curY += 10;
-    }
-
-    const drawRow = (
-      label: string,
-      val: string,
-      valColor = '#0F172A',
-      boldVal = false
-    ) => {
-      ctx.textAlign = 'left';
-      ctx.font = '500 16px "Plus Jakarta Sans", sans-serif';
-      ctx.fillStyle = '#64748B';
-      ctx.fillText(label, 48, curY);
-
-      ctx.textAlign = 'right';
-      ctx.font = `${boldVal ? '700' : '600'} 16px "JetBrains Mono", monospace`;
-      ctx.fillStyle = valColor;
-      ctx.fillText(val, w - 48, curY);
-      curY += 30;
-    };
-
-    const drawDashedLine = () => {
-      curY += 4;
-      ctx.save();
-      ctx.setLineDash([6, 5]);
-      ctx.strokeStyle = '#CBD5E1';
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      ctx.moveTo(48, curY);
-      ctx.lineTo(w - 48, curY);
-      ctx.stroke();
-      ctx.restore();
-      curY += 24;
-    };
-
-    drawRow('No. Invoice', noStruk);
-    drawRow('Tanggal Bayar', tanggalBayar);
-    drawRow('Admin', adminName);
-
-    drawDashedLine();
-
-    drawRow('Paket', jadwal.paket || '-');
-    drawRow('Yth. Bpk/Ibu', jadwal.namaKlien || '-', '#0F172A', true);
-    drawRow('Acara', jadwal.namaAcara || '-');
-    drawRow('Lokasi', jadwal.lokasi || 'Studio');
-    drawRow(
-      'Waktu Acara',
-      `${formatTanggalIndo(jadwal.waktuMulai, true)}, ${formatJamWIB(jadwal.waktuMulai)} WIB`
-    );
-
-    if (jadwal.catatan && jadwal.catatan !== '-') {
-      ctx.textAlign = 'left';
-      ctx.font = '500 15px "Plus Jakarta Sans", sans-serif';
-      ctx.fillStyle = '#64748B';
-      ctx.fillText('Catatan:', 48, curY);
-      curY += 22;
-      ctx.font = 'italic 15px "Plus Jakarta Sans", sans-serif';
-      ctx.fillStyle = '#334155';
-      ctx.fillText(jadwal.catatan.slice(0, 68), 48, curY);
-      curY += 26;
-    }
-
-    drawDashedLine();
-
-    if (hargaTambahan > 0) {
-      drawRow(jadwal.paket || 'Harga Paket Dasar', keRupiah(hargaPaketDasar));
-      drawRow(
-        jadwal.namaTambahan ? `Tambahan: ${jadwal.namaTambahan}` : 'Biaya Tambahan',
-        `+ ${keRupiah(hargaTambahan)}`,
-        '#2980B9',
-        true
-      );
-    } else {
-      drawRow('Total Tarif', keRupiah(totalTarif));
-    }
-
-    if (diskon > 0) {
-      drawRow('Diskon', `- ${keRupiah(diskon)}`, '#D32F2F', true);
-    }
-
-    drawRow('Total Tagihan', keRupiah(tagihanSetelahDiskon), '#1976D2', true);
-
-    if (isLunas && dpDibayar > 0 && dpDibayar < tagihanSetelahDiskon) {
-      drawRow('Telah di-DP Sebelumnya', `- ${keRupiah(dpDibayar)}`, '#E74C3C');
-    }
-
-    curY += 6;
-    if (isLunas) {
-      drawRow('Status Pembayaran', 'LUNAS (Rp 0)', '#2E7D32', true);
-    } else {
-      drawRow('Telah Dibayar (DP)', keRupiah(nominalDibayar), '#0F172A', true);
-      drawRow('Sisa Pelunasan', keRupiah(sisaTagihan), '#C62828', true);
-    }
-
-    // 6. Tanda Tangan Owner
-    curY += 16;
-    if (adaTtd && owner.ttdUrl) {
-      const ttdImg = await loadImg(owner.ttdUrl);
-      if (ttdImg) {
-        const ttdW = 170;
-        const ttdH = 72;
-        ctx.drawImage(ttdImg, w / 2 - ttdW / 2, curY, ttdW, ttdH);
-        curY += ttdH + 8;
-      }
-      ctx.textAlign = 'center';
-      ctx.font = '700 15px "Plus Jakarta Sans", sans-serif';
-      ctx.fillStyle = '#1E293B';
-      ctx.fillText(`( ${owner.namaBrand} )`, w / 2, curY);
-      curY += 28;
-    }
-
-    ctx.textAlign = 'center';
-    ctx.font = 'italic 13px "Plus Jakarta Sans", sans-serif';
-    ctx.fillStyle = '#64748B';
-    ctx.fillText(
-      'Terima kasih. Simpan struk ini sebagai bukti pembayaran yang sah.',
-      w / 2,
-      curY + 12
-    );
-
-    return canvas.toDataURL('image/png');
   };
 
   const generateReceiptPngDataUrl = async (): Promise<string> => {
-    try {
-      return await renderCanvasReceipt(true);
-    } catch {
-      // Fallback jika gambar Logo/TTD dari URL eksternal memicu CORS Tainted Canvas
-      return await renderCanvasReceipt(false);
-    }
+    return await renderCanvasReceipt();
   };
 
   const fileNamePng = `Struk_${(jadwal.namaKlien || 'Klien').replace(/[^a-zA-Z0-9]/g, '_')}_${noStruk}.png`;
@@ -356,7 +209,45 @@ export const StrukModal: React.FC<StrukModalProps> = ({
   };
 
   /**
-   * 2. Bagikan Gambar Struk (Web Share API File PNG seperti di HP Android / iOS / PC)
+   * Simpan Faktur A4 ke Perangkat
+   */
+  const handleDownloadA4Invoice = async () => {
+    setIsGeneratingPng(true);
+    setBtStatus('Menyiapkan dokumen Faktur A4...');
+    try {
+      const node = document.getElementById('printable-a4-invoice-area');
+      if (!node) {
+        setBtStatus('⚠️ Area Faktur A4 tidak ditemukan.');
+        return;
+      }
+      const dataUrl = await toPng(node, {
+        cacheBust: true,
+        pixelRatio: 2,
+        skipFonts: true,
+        style: {
+          transform: 'none',
+        },
+      });
+      if (dataUrl) {
+        const link = document.createElement('a');
+        link.download = `Faktur_A4_${(jadwal.namaKlien || 'Klien').replace(/[^a-zA-Z0-9]/g, '_')}_${noStruk}.png`;
+        link.href = dataUrl;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        setBtStatus('✓ Faktur A4 berhasil disimpan!');
+        setTimeout(() => setBtStatus(null), 3500);
+      }
+    } catch (err) {
+      console.error('Gagal simpan Faktur A4:', err);
+      setBtStatus('Gagal menyimpan Faktur A4.');
+    } finally {
+      setIsGeneratingPng(false);
+    }
+  };
+
+  /**
+   * 2. Bagikan Gambar Struk (Web Share API File PNG)
    */
   const handleShareReceiptImage = async () => {
     setIsGeneratingPng(true);
@@ -387,7 +278,7 @@ export const StrukModal: React.FC<StrukModalProps> = ({
         return;
       }
 
-      // Fallback jika browser tidak mendukung share file langsung -> Unduh otomatis
+      // Fallback unduh otomatis jika browser tidak dukung share file
       const link = document.createElement('a');
       link.download = fileNamePng;
       link.href = dataUrl;
@@ -408,31 +299,82 @@ export const StrukModal: React.FC<StrukModalProps> = ({
   };
 
   /**
-   * 3. Kirim ke WhatsApp Klien (Tanpa Terblokir Popup Blocker + Otomatis Unduh PNG)
+   * 3. Format Teks WhatsApp Terstruktur & Auto-Copy jika Tanpa Nomor WA
    */
+  const buildStructuredWaText = (): string => {
+    let msg = `*${(owner.namaBrand || "Kafela's Agenda").toUpperCase()}*\n`;
+    if (alamatStore) msg += `${alamatStore}\n`;
+    if (owner.noWhatsApp) msg += `${owner.noWhatsApp}\n`;
+    msg += `--------------------------------\n`;
+    msg += `*No. Invoice:* #${noStruk}\n`;
+    msg += `*Tanggal:* ${tanggalBayar}\n`;
+    msg += `*Pelanggan:* ${jadwal.namaKlien}\n`;
+    msg += `*Acara:* ${jadwal.namaAcara}\n`;
+    msg += `*Lokasi:* ${jadwal.lokasi || 'Studio'}\n`;
+    if (jadwal.waktuMulai > 0) {
+      msg += `*Waktu Acara:* ${formatTanggalIndo(jadwal.waktuMulai, true)}, ${formatJamWIB(jadwal.waktuMulai)} WIB\n`;
+    }
+    msg += `--------------------------------\n`;
+    msg += `*Rincian Layanan:*\n`;
+    msg += `• ${jadwal.paket || 'Paket Utama'}: ${keRupiah(hargaPaketDasar)}\n`;
+    if (hargaTambahan > 0) {
+      msg += `• Tambahan: ${jadwal.namaTambahan || 'Biaya Tambahan'}: +${keRupiah(hargaTambahan)}\n`;
+    }
+    if (diskon > 0) {
+      msg += `• Diskon: -${keRupiah(diskon)}\n`;
+    }
+    msg += `--------------------------------\n`;
+    msg += `*Total Tagihan:* *${keRupiah(tagihanSetelahDiskon)}*\n`;
+    if (dpDibayar > 0) {
+      msg += `Pembayaran Awal (DP): ${keRupiah(dpDibayar)}\n`;
+    }
+    if (sisaTagihan > 0) {
+      msg += `*Sisa Pembayaran:* *${keRupiah(sisaTagihan)}*\n`;
+    }
+    msg += `*Status:* *${isLunas ? 'LUNAS (Rp 0)' : 'BELUM LUNAS'}*\n`;
+    if (jadwal.catatan && jadwal.catatan !== '-') {
+      msg += `\n*Catatan:* ${jadwal.catatan}\n`;
+    }
+    if (rekening?.rekUtama) {
+      msg += `\nPembayaran via Transfer:\n${rekening.bankUtama} ${rekening.rekUtama} a/n ${rekening.namaUtama}\n`;
+    }
+    msg += `\nTerima kasih atas kepercayaan Anda!`;
+    return msg;
+  };
+
   const handleSendWhatsAppWeb = async () => {
-    const cleanPhone = formatNomorWA(jadwal.waPic);
-    const pesan = `Halo Bapak/Ibu *${jadwal.namaKlien}*, berikut rincian struk bukti pembayaran Anda (*#${noStruk}*) dari *${owner.namaBrand}*:\n\n• Acara: *${jadwal.namaAcara}*\n• Paket: *${jadwal.paket}*\n• Waktu: *${formatTanggalIndo(jadwal.waktuMulai, true)}, ${formatJamWIB(jadwal.waktuMulai)} WIB*\n• Total Tagihan: *${keRupiah(tagihanSetelahDiskon)}*\n• Status: *${isLunas ? 'LUNAS' : `DP (${keRupiah(nominalDibayar)}) — Sisa: ${keRupiah(sisaTagihan)}`}*\n\nTerima kasih banyak atas kepercayaan Anda!`;
+    const rawPhone = (jadwal.waPic || '').trim();
+    const cleanPhone = formatNomorWA(rawPhone);
+    const pesan = buildStructuredWaText();
 
-    const waUrl = cleanPhone
-      ? `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(pesan)}`
-      : `https://api.whatsapp.com/send?text=${encodeURIComponent(pesan)}`;
-
-    // Buka WhatsApp langsung pada klik user agar tidak diblokir browser
-    const waLink = document.createElement('a');
-    waLink.href = waUrl;
-    waLink.target = '_blank';
-    waLink.rel = 'noopener noreferrer';
-    document.body.appendChild(waLink);
-    waLink.click();
-    document.body.removeChild(waLink);
-
-    // Sekaligus unduh gambar struknya
-    await handleDownloadPng();
+    if (cleanPhone) {
+      const waUrl = `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(pesan)}`;
+      const waLink = document.createElement('a');
+      waLink.href = waUrl;
+      waLink.target = '_blank';
+      waLink.rel = 'noopener noreferrer';
+      document.body.appendChild(waLink);
+      waLink.click();
+      document.body.removeChild(waLink);
+      await handleDownloadPng();
+    } else {
+      // Salin ke clipboard secara cerdas jika nomor belum terisi
+      try {
+        await navigator.clipboard.writeText(pesan);
+        setCopiedWA(true);
+        setTimeout(() => setCopiedWA(false), 2500);
+        setBtStatus('✓ Teks nota berhasil disalin ke clipboard! (Nomor WA klien belum diisi)');
+        setTimeout(() => setBtStatus(null), 4000);
+      } catch {
+        // Fallback
+        setBtStatus('Nomor WA klien belum diisi.');
+      }
+      await handleDownloadPng();
+    }
   };
 
   /**
-   * 4. Print Biasa (Printer Kasir USB / Inkjet / PC) via Iframe Cetak Bersih
+   * 4. Print Biasa (Printer Kasir USB / Inkjet / PC)
    */
   const handleStandardPrint = async () => {
     setIsGeneratingPng(true);
@@ -528,7 +470,7 @@ export const StrukModal: React.FC<StrukModalProps> = ({
       isLunas ? 'BUKTI PELUNASAN\n' : 'INVOICE PEMBAYARAN\n',
       lineSep,
       '\x1B\x61\x00', // Left align
-      `No.Inv  : ${noStruk}\n`,
+      `No.Inv  : #${noStruk}\n`,
       `Tanggal : ${tanggalBayar}\n`,
       `Admin   : ${adminName}\n`,
       lineSep,
@@ -547,7 +489,7 @@ export const StrukModal: React.FC<StrukModalProps> = ({
       !isLunas ? `Sisa    : ${keRupiah(sisaTagihan)}\n` : '',
       eqSep,
       '\x1B\x61\x01', // Center align
-      `STATUS: ${isLunas ? 'LUNAS (Rp 0)' : 'SUDAH DP'}\n\n`,
+      `STATUS: ${isLunas ? 'LUNAS (Rp 0)' : 'BELUM LUNAS'}\n\n`,
       'Terima kasih atas kepercayaan\n',
       'Anda. Simpan struk ini sebagai\n',
       'bukti pembayaran yang sah.\n\n\n\n',
@@ -555,7 +497,7 @@ export const StrukModal: React.FC<StrukModalProps> = ({
   };
 
   /**
-   * 5. Cetak ke Printer Kasir Bluetooth (Multi-UUID + Chunk 64 Byte + Fallback RawBT)
+   * 5. Cetak ke Printer Kasir Bluetooth
    */
   const handleWebBluetoothPrint = async () => {
     setShowRawBtFallback(false);
@@ -613,7 +555,6 @@ export const StrukModal: React.FC<StrukModalProps> = ({
 
       let targetChar: BleCharacteristic | null = null;
 
-      // 1. Cari dari daftar UUID service & characteristic printer thermal populer
       for (const sUuid of KNOWN_PRINTER_SERVICES) {
         if (targetChar) break;
         try {
@@ -625,9 +566,7 @@ export const StrukModal: React.FC<StrukModalProps> = ({
                 targetChar = ch;
                 break;
               }
-            } catch {
-              // Lanjut cek characteristic berikutnya
-            }
+            } catch {}
           }
           if (!targetChar) {
             const chars = await service.getCharacteristics();
@@ -638,12 +577,9 @@ export const StrukModal: React.FC<StrukModalProps> = ({
               chars[0] ||
               null;
           }
-        } catch {
-          // Lanjut cek service berikutnya
-        }
+        } catch {}
       }
 
-      // 2. Jika belum ketemu, scan seluruh primary services yang tersedia di printer
       if (!targetChar) {
         try {
           const allServices = await server.getPrimaryServices();
@@ -657,9 +593,7 @@ export const StrukModal: React.FC<StrukModalProps> = ({
               break;
             }
           }
-        } catch {
-          // Abaikan
-        }
+        } catch {}
       }
 
       if (!targetChar) {
@@ -670,7 +604,6 @@ export const StrukModal: React.FC<StrukModalProps> = ({
       const encoder = new TextEncoder();
       const rawBytes = encoder.encode(buildEscPosText());
 
-      // Kirim bertahap per 64 byte dengan jeda 25ms agar buffer printer thermal tidak penuh/gagal
       const chunkSize = 64;
       for (let i = 0; i < rawBytes.length; i += chunkSize) {
         const chunk = rawBytes.slice(i, i + chunkSize);
@@ -695,15 +628,12 @@ export const StrukModal: React.FC<StrukModalProps> = ({
         return;
       }
       setBtStatus(
-        'Gagal kirim langsung via Web Bluetooth. Jika memakai HP Android, Anda juga bisa cetak via RawBT di bawah.'
+        'Gagal kirim via Web Bluetooth. Anda juga bisa cetak via aplikasi RawBT di bawah.'
       );
       setShowRawBtFallback(true);
     }
   };
 
-  /**
-   * Fallback Cetak ke Aplikasi RawBT Thermal Printer (Android)
-   */
   const handlePrintViaRawBT = () => {
     const escPos = buildEscPosText();
     const base64Data = btoa(unescape(encodeURIComponent(escPos)));
@@ -716,315 +646,647 @@ export const StrukModal: React.FC<StrukModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 overflow-y-auto">
-      <div className="relative w-full max-w-md my-auto">
-        {/* Tombol Close Atas */}
-        <div className="flex justify-end mb-2 no-print">
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex items-center justify-center w-8 h-8 rounded-full bg-rose-700 hover:bg-rose-600 text-white shadow-lg cursor-pointer transition-colors"
-            title="Tutup Struk"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-
-        {/* KERTAS STRUK RESMI (Persis layout_struk_lunas.xml & layout_struk_dp.xml) */}
-        <div
-          id="printable-receipt-area"
-          className="relative overflow-hidden rounded-xl bg-white text-slate-900 shadow-2xl border border-slate-200"
-        >
-          {/* 1. WATERMARK TEKS MIRING BERULANG ALA STRUK BANK / DANA */}
-          <div
-            aria-hidden="true"
-            className="pointer-events-none absolute inset-0 overflow-hidden select-none opacity-[0.045]"
-          >
-            <div className="-rotate-[25deg] scale-150 flex flex-col gap-7 pt-6">
-              {Array.from({ length: 14 }).map((_, rowIdx) => (
-                <div
-                  key={rowIdx}
-                  className="whitespace-nowrap text-[15px] font-extrabold tracking-[0.18em] text-black"
-                >
-                  {Array.from({ length: 5 })
-                    .map(() => watermarkBrand)
-                    .join('     ')}
-                </div>
-              ))}
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-2 sm:p-4 overflow-y-auto">
+      {/* FRAME UTAMA MODAL: Responsif Desktop (lg:max-w-4xl) vs HP (max-w-md) */}
+      <div className="relative w-full max-w-md lg:max-w-4xl bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col my-auto max-h-[96vh]">
+        {/* TOP HEADER ELEGAN */}
+        <div className="bg-slate-950 px-4 sm:px-6 py-3.5 border-b border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 no-print shrink-0">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-sky-500/10 border border-sky-500/20 flex items-center justify-center text-sky-400">
+              <Receipt className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="font-bold text-sm text-white flex items-center gap-2">
+                <span>Dokumen Pembayaran</span>
+                <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded-full bg-slate-800 text-sky-400 border border-slate-700">
+                  #{noStruk}
+                </span>
+              </h3>
+              <p className="text-[11px] text-slate-400">
+                {jadwal.namaKlien} &bull; {formatTanggalIndo(jadwal.waktuMulai, true)}
+              </p>
             </div>
           </div>
 
-          {/* 2. WATERMARK LOGO BRAND DI TENGAH */}
-          {tampilLogoWatermark && (
-            <div
-              aria-hidden="true"
-              className="pointer-events-none absolute inset-0 flex items-center justify-center"
+          <div className="flex items-center gap-2.5 w-full sm:w-auto justify-between sm:justify-end">
+            <div className="flex items-center gap-1 bg-slate-900 p-1 rounded-xl border border-slate-800">
+              <button
+                type="button"
+                onClick={() => setInvoiceMode('THERMAL')}
+                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  invoiceMode === 'THERMAL'
+                    ? 'bg-sky-600 text-white shadow'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                🧾 Struk 80mm
+              </button>
+              <button
+                type="button"
+                onClick={() => setInvoiceMode('A4')}
+                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  invoiceMode === 'A4'
+                    ? 'bg-sky-600 text-white shadow'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                📄 Faktur A4
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={onClose}
+              className="w-8 h-8 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center transition-colors cursor-pointer"
+              title="Tutup Struk"
             >
-              <img
-                src={owner.logoBrandUrl}
-                alt="Watermark Studio"
-                referrerPolicy="no-referrer"
-                className="w-40 h-40 object-contain opacity-[0.06]"
-              />
-            </div>
-          )}
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
 
-          {/* 3. KONTEN DATA STRUK DI DEPAN */}
-          <div className="relative z-10 px-6 py-5 text-xs">
-            {/* Indikator Sukses */}
-            <div className="flex items-center justify-center gap-1.5 mb-2 text-emerald-700 font-bold text-xs">
-              <CheckCircle2 className="w-4 h-4 shrink-0" />
-              <span>{isLunas ? 'Pembayaran Lunas!' : 'Pembayaran Tersimpan!'}</span>
-            </div>
+        {/* BODY MODAL: GRID DUA KOLOM DI PC, SATU KOLOM DI HP */}
+        <div className="flex-1 flex flex-col lg:grid lg:grid-cols-12 overflow-hidden">
+          {/* KOLOM KIRI (PC) / ATAS (HP): PREVIEW KERTAS */}
+          <div className="lg:col-span-7 xl:col-span-8 bg-slate-950/70 p-4 sm:p-6 overflow-y-auto flex justify-center items-start border-b lg:border-b-0 lg:border-r border-slate-800">
+            {invoiceMode === 'THERMAL' ? (
+              <div
+                id="printable-receipt-area"
+                className="w-[320px] sm:w-[350px] bg-white text-slate-900 p-5 sm:p-6 rounded-xl shadow-2xl border border-slate-200 relative font-mono text-[11px] leading-tight select-none my-auto"
+                style={{
+                  fontFamily: '"Courier New", Courier, monospace',
+                }}
+              >
+              {/* 1. DANA-STYLE REPEATING WATERMARK BACKGROUND */}
+              <div
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-0 overflow-hidden select-none opacity-[0.04] z-0 flex flex-wrap content-start"
+                style={{
+                  transform: 'rotate(-20deg) scale(1.3)',
+                  transformOrigin: 'center center',
+                }}
+              >
+                {Array.from({ length: 42 }).map((_, i) => (
+                  <div
+                    key={i}
+                    className="text-[11px] font-black text-slate-950 m-2.5 whitespace-nowrap"
+                  >
+                    {watermarkBrand} &bull;
+                  </div>
+                ))}
+              </div>
 
-            {/* Header: Logo Samping atau Tengah */}
-            <div className="flex items-center justify-center gap-3 mt-1 mb-2">
-              {tampilLogoSamping && (
-                <div className="w-12 h-12 rounded-lg border border-slate-300 overflow-hidden shrink-0 bg-white">
+              {/* 2. WATERMARK LOGO BRAND DI TENGAH */}
+              {tampilLogoWatermark && finalLogoUrl && (
+                <div
+                  aria-hidden="true"
+                  className="pointer-events-none absolute inset-0 flex items-center justify-center overflow-hidden opacity-[0.07] z-0"
+                >
                   <img
-                    src={owner.logoBrandUrl}
-                    alt={owner.namaBrand}
+                    src={finalLogoUrl}
+                    alt="Watermark"
                     referrerPolicy="no-referrer"
-                    className="w-full h-full object-cover"
+                    className="w-44 h-44 object-contain filter grayscale"
                   />
                 </div>
               )}
-              <div className={tampilLogoSamping ? 'text-left' : 'text-center'}>
-                <h2 className="text-lg font-extrabold text-black tracking-tight">
-                  {owner.namaBrand || "Kafela's Agenda"}
-                </h2>
-                <p className="text-[11px] text-slate-600">Struk Pembayaran Digital</p>
-              </div>
-            </div>
 
-            {isLunas && (
-              <div className="text-center font-bold text-emerald-700 text-xs mb-2.5 tracking-wide">
-                BUKTI PELUNASAN
-              </div>
-            )}
+              {/* 3. KONTEN STRUK DI LAPISAN DEPAN */}
+              <div className="relative z-10 space-y-2">
+                {/* Header Toko: Logo di Kiri, Teks Detail di Kanan */}
+                <div className="flex items-center gap-3">
+                  {tampilLogoSamping && (
+                    <div className="shrink-0">
+                      {finalLogoUrl ? (
+                        <img
+                          src={finalLogoUrl}
+                          alt="Logo Studio"
+                          referrerPolicy="no-referrer"
+                          className="h-11 w-auto max-w-[150px] object-contain filter contrast-125"
+                        />
+                      ) : (
+                        <div className="w-10 h-10 rounded-full border-2 border-slate-900 flex items-center justify-center font-bold text-xs">
+                          KA
+                        </div>
+                      )}
+                    </div>
+                  )}
 
-            {/* Rincian Nomor & Tanggal */}
-            <div className="space-y-1 text-xs">
-              <div className="flex justify-between">
-                <span className="text-slate-500">No.</span>
-                <span className="font-mono font-semibold text-black">{noStruk}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-500">Tanggal Bayar</span>
-                <span className="font-mono text-black">{tanggalBayar}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-500">Admin</span>
-                <span className="text-black font-medium">{adminName}</span>
-              </div>
-            </div>
-
-            <div className="my-2.5 border-t-2 border-dashed border-slate-300" />
-
-            {/* Rincian Acara & Klien */}
-            <div className="space-y-1 text-xs">
-              <div className="flex justify-between gap-4">
-                <span className="text-slate-500 shrink-0">Paket</span>
-                <span className="text-black font-semibold text-right">{jadwal.paket}</span>
-              </div>
-              <div className="flex justify-between gap-4">
-                <span className="text-slate-500 shrink-0">Yth. Bpk/Ibu</span>
-                <span className="text-black font-bold text-right">{jadwal.namaKlien}</span>
-              </div>
-              <div className="flex justify-between gap-4">
-                <span className="text-slate-500 shrink-0">Acara</span>
-                <span className="text-black text-right">{jadwal.namaAcara}</span>
-              </div>
-              <div className="flex justify-between gap-4">
-                <span className="text-slate-500 shrink-0">Lokasi</span>
-                <span className="text-slate-800 text-right">{jadwal.lokasi}</span>
-              </div>
-              {jadwal.waktuMulai > 0 && (
-                <div className="flex justify-between gap-4">
-                  <span className="text-slate-500 shrink-0">Waktu</span>
-                  <span className="font-mono text-slate-800 text-right">
-                    {formatTanggalIndo(jadwal.waktuMulai, true)}, {formatJamWIB(jadwal.waktuMulai)} WIB
-                  </span>
+                  <div className="flex flex-col text-left space-y-0.5 overflow-hidden">
+                    <h2 className="text-xs sm:text-sm font-extrabold uppercase tracking-wide text-slate-950 truncate">
+                      {owner.namaBrand || "Kafela's Agenda"}
+                    </h2>
+                    {owner.noWhatsApp && (
+                      <p className="text-[9px] text-slate-600 leading-tight line-clamp-2">{owner.noWhatsApp}</p>
+                    )}
+                    {alamatStore && (
+                      <p className="text-[9px] text-slate-600 leading-tight line-clamp-2">{alamatStore}</p>
+                    )}
+                  </div>
                 </div>
-              )}
-            </div>
 
-            {jadwal.catatan && jadwal.catatan.trim() !== '' && jadwal.catatan !== '-' && (
-              <div className="mt-2">
-                <span className="text-slate-500 text-[11px] block">Catatan:</span>
-                <p className="text-slate-800 italic text-xs mt-0.5 whitespace-pre-line">
-                  {jadwal.catatan}
+                <div className="border-b border-dashed border-slate-700 my-2" />
+
+                {/* Invoice Meta */}
+                <div className="space-y-1 text-[10px]">
+                  <div className="flex justify-between">
+                    <span className="text-slate-600">No. Invoice</span>
+                    <span className="font-bold text-slate-950">#{noStruk}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-600">Tanggal Bayar</span>
+                    <span>{tanggalBayar}</span>
+                  </div>
+                  {jadwal.waktuMulai > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-slate-600">Waktu Acara</span>
+                      <span>
+                        {formatTanggalIndo(jadwal.waktuMulai, true)}, {formatJamWIB(jadwal.waktuMulai)} WIB
+                      </span>
+                    </div>
+                  )}
+                  <div className="flex justify-between">
+                    <span className="text-slate-600">Kasir / Admin</span>
+                    <span className="font-semibold text-slate-900">{adminName}</span>
+                  </div>
+                </div>
+
+                <div className="border-b border-dashed border-slate-700 my-2" />
+
+                {/* Nama Klien & Status Pembayaran Utama */}
+                <div className="text-center py-1">
+                  <div className="text-sm font-black uppercase tracking-tight text-slate-950">
+                    {jadwal.namaKlien || 'KLIEN'}
+                  </div>
+                  {jadwal.namaAcara && (
+                    <div className="text-[10px] text-slate-600">{jadwal.namaAcara}</div>
+                  )}
+
+                  {/* Banner Status Besar */}
+                  <div
+                    className={`text-xs font-black tracking-widest mt-2 py-1 px-3 rounded inline-block ${
+                      isLunas
+                        ? 'bg-emerald-100 text-emerald-900 border border-emerald-300'
+                        : 'bg-rose-100 text-rose-900 border border-rose-300'
+                    }`}
+                  >
+                    {isLunas ? '✓ LUNAS' : 'BELUM LUNAS'}
+                  </div>
+
+                  {sisaTagihan > 0 && (
+                    <div className="text-sm font-black text-rose-700 mt-1">
+                      Sisa: {keRupiah(sisaTagihan)}
+                    </div>
+                  )}
+                </div>
+
+                <div className="border-b border-dashed border-slate-700 my-2" />
+
+                {/* Rincian Layanan & Tambahan */}
+                <div className="space-y-1 py-0.5">
+                  <div className="flex justify-between font-bold text-[11px]">
+                    <span>{jadwal.paket || 'Paket Layanan'}</span>
+                    <span>{keRupiah(hargaPaketDasar)}</span>
+                  </div>
+
+                  {hargaTambahan > 0 && (
+                    <div className="flex justify-between text-[10px] text-sky-800">
+                      <span>+ {jadwal.namaTambahan || 'Biaya Tambahan'}</span>
+                      <span>+ {keRupiah(hargaTambahan)}</span>
+                    </div>
+                  )}
+
+                  {diskon > 0 && (
+                    <div className="flex justify-between text-[10px] text-rose-700 font-semibold">
+                      <span>Diskon Khusus</span>
+                      <span>- {keRupiah(diskon)}</span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="border-b border-dashed border-slate-700 my-2" />
+
+                {/* Rincian Keuangan */}
+                <div className="space-y-1 text-[11px]">
+                  <div className="flex justify-between font-extrabold text-slate-950">
+                    <span>Total Tagihan</span>
+                    <span>{keRupiah(tagihanSetelahDiskon)}</span>
+                  </div>
+
+                  {dpDibayar > 0 && (
+                    <div className="flex justify-between text-slate-700">
+                      <span>Uang Muka (DP)</span>
+                      <span>{keRupiah(dpDibayar)}</span>
+                    </div>
+                  )}
+
+                  {isLunas ? (
+                    <div className="flex justify-between font-bold text-emerald-800 pt-0.5">
+                      <span>Sisa Pembayaran</span>
+                      <span>Rp 0 (LUNAS)</span>
+                    </div>
+                  ) : (
+                    <div className="flex justify-between font-bold text-rose-700 pt-0.5">
+                      <span>Sisa Pelunasan</span>
+                      <span>{keRupiah(sisaTagihan)}</span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="border-b border-dashed border-slate-700 my-2" />
+
+                {/* Catatan & Rekening Bank */}
+                <div className="text-center space-y-1 text-[10px] pt-0.5 text-slate-700">
+                  {jadwal.catatan && jadwal.catatan !== '-' && (
+                    <div className="italic text-slate-800 font-semibold">
+                      Catatan: {jadwal.catatan}
+                    </div>
+                  )}
+                  {rekening?.rekUtama && (
+                    <div className="text-[9px] text-slate-600">
+                      Transfer: {rekening.bankUtama} {rekening.rekUtama} a/n {rekening.namaUtama}
+                    </div>
+                  )}
+                </div>
+
+                {/* Wadah Tanda Tangan Owner */}
+                {adaTtd && finalTtdUrl && (
+                  <div className="mt-2.5 pt-1 flex flex-col items-center justify-center">
+                    <img
+                      src={finalTtdUrl}
+                      alt="Tanda Tangan"
+                      referrerPolicy="no-referrer"
+                      className="max-w-[150px] max-h-[60px] object-contain -mb-1"
+                    />
+                    <span className="text-[10px] font-bold text-slate-800 mt-1">
+                      ( {owner.namaBrand} )
+                    </span>
+                  </div>
+                )}
+
+                <p className="mt-2 text-center text-[9px] italic text-slate-500 leading-tight">
+                  Terima kasih atas kepercayaan Anda.
+                  <br />
+                  Simpan struk ini sebagai bukti pembayaran yang sah.
                 </p>
               </div>
+            </div>
+            ) : (
+              /* LEMBARAN FAKTUR A4 RESMI */
+              <div
+                id="printable-a4-invoice-area"
+                className="w-full max-w-[1024px] bg-white text-slate-900 p-8 sm:p-12 rounded-xl shadow-2xl border border-slate-200 font-sans text-xs leading-relaxed relative my-auto mx-auto"
+                style={{ minWidth: '960px' }}
+              >
+                {/* Header Faktur A4 */}
+                <div className="flex items-start justify-between border-b border-slate-200 pb-6 mb-6">
+                  <div className="flex items-center gap-4">
+                    {finalLogoUrl ? (
+                      <img
+                        src={finalLogoUrl}
+                        alt="Logo Studio"
+                        referrerPolicy="no-referrer"
+                        className="h-14 w-auto max-w-[160px] object-contain"
+                      />
+                    ) : (
+                      <div className="w-12 h-12 rounded-xl bg-slate-900 text-white flex items-center justify-center font-bold text-base">
+                        KA
+                      </div>
+                    )}
+                    <div>
+                      <h1 className="text-lg font-extrabold text-slate-950 uppercase tracking-wide">
+                        {owner.namaBrand || "Kafela's Agenda"}
+                      </h1>
+                      {alamatStore && <p className="text-slate-600 text-[11px] mt-0.5">{alamatStore}</p>}
+                      {owner.noWhatsApp && <p className="text-slate-600 text-[11px]">{owner.noWhatsApp}</p>}
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <h2 className="text-xl font-black text-slate-900 tracking-wider">FAKTUR INVOICE</h2>
+                    <p className="font-mono font-bold text-sky-600 text-sm mt-1">#{noStruk}</p>
+                    <p className="text-slate-500 text-[11px] mt-0.5">Tanggal: {tanggalBayar}</p>
+                  </div>
+                </div>
+
+                {/* Info Klien & Acara */}
+                <div className="grid grid-cols-2 gap-6 bg-slate-50 border border-slate-200 rounded-xl p-4 mb-6">
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+                      Kepada (Klien):
+                    </span>
+                    <p className="font-extrabold text-sm text-slate-900">{jadwal.namaKlien || '-'}</p>
+                    {jadwal.waPic && <p className="text-slate-600 text-[11px] mt-0.5">WA: {jadwal.waPic}</p>}
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+                      Detail Acara:
+                    </span>
+                    <p className="font-bold text-slate-900 text-xs">{jadwal.namaAcara || 'Sesi Pemotretan'}</p>
+                    <p className="text-slate-600 text-[11px] mt-0.5">Lokasi: {jadwal.lokasi || 'Studio'}</p>
+                    {jadwal.waktuMulai > 0 && (
+                      <p className="text-slate-600 text-[11px] mt-0.5">
+                        Waktu: {formatTanggalIndo(jadwal.waktuMulai, true)}, {formatJamWIB(jadwal.waktuMulai)} WIB
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Tabel Rincian */}
+                <div className="mb-6 overflow-hidden rounded-xl border border-slate-200">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-slate-900 text-white text-[11px] font-bold uppercase tracking-wider">
+                        <th className="py-2.5 px-4">Deskripsi Layanan & Item</th>
+                        <th className="py-2.5 px-4 text-center">Qty</th>
+                        <th className="py-2.5 px-4 text-right">Harga Satuan</th>
+                        <th className="py-2.5 px-4 text-right">Jumlah</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200 text-xs text-slate-800">
+                      <tr>
+                        <td className="py-3 px-4 font-semibold">
+                          {jadwal.paket || 'Paket Layanan Studio'}
+                        </td>
+                        <td className="py-3 px-4 text-center">1</td>
+                        <td className="py-3 px-4 text-right font-mono">{keRupiah(hargaPaketDasar)}</td>
+                        <td className="py-3 px-4 text-right font-mono font-bold">{keRupiah(hargaPaketDasar)}</td>
+                      </tr>
+                      {hargaTambahan > 0 && (
+                        <tr>
+                          <td className="py-3 px-4 font-semibold text-sky-700">
+                            + {jadwal.namaTambahan || 'Biaya Tambahan'}
+                          </td>
+                          <td className="py-3 px-4 text-center">1</td>
+                          <td className="py-3 px-4 text-right font-mono">{keRupiah(hargaTambahan)}</td>
+                          <td className="py-3 px-4 text-right font-mono font-bold text-sky-700">{keRupiah(hargaTambahan)}</td>
+                        </tr>
+                      )}
+                      {diskon > 0 && (
+                        <tr>
+                          <td className="py-3 px-4 font-semibold text-rose-700">
+                            - Diskon Khusus
+                          </td>
+                          <td className="py-3 px-4 text-center">1</td>
+                          <td className="py-3 px-4 text-right font-mono text-rose-700">-{keRupiah(diskon)}</td>
+                          <td className="py-3 px-4 text-right font-mono font-bold text-rose-700">-{keRupiah(diskon)}</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Rincian Total & Pembayaran */}
+       <div className="flex justify-end mb-8">
+  <div className="w-72 space-y-2 border border-slate-200 rounded-xl p-4 bg-slate-50/50 text-xs">
+    <div className="flex justify-between text-slate-600">
+      <span>Subtotal:</span>
+      <span className="font-mono font-semibold">{keRupiah(totalTarif)}</span>
+    </div>
+    {diskon > 0 && (
+      <div className="flex justify-between text-rose-600">
+        <span>Diskon:</span>
+        <span className="font-mono font-semibold">-{keRupiah(diskon)}</span>
+      </div>
+    )}
+    <div className="flex justify-between text-slate-900 font-semibold border-t border-slate-200 pt-2">
+      <span>Total Tagihan:</span>
+      <span className="font-mono font-semibold">{keRupiah(tagihanSetelahDiskon)}</span>
+    </div>
+    <div className="flex justify-between text-slate-600 border-t border-slate-200 pt-2">
+      <span>Dibayar (DP / Lunas):</span>
+      <span className="font-mono font-semibold text-emerald-700">{keRupiah(nominalDibayar)}</span>
+    </div>
+    {!isLunas && (
+      <div className="flex justify-between text-rose-700 font-semibold border-t border-dashed border-rose-200 pt-2">
+        <span>Sisa Pelunasan:</span>
+        <span className="font-mono font-semibold">{keRupiah(sisaTagihan)}</span>
+      </div>
+    )}
+  </div>
+</div>
+                {/* Catatan & Rekening Transfer */}
+                <div className="grid grid-cols-2 gap-6 border-t border-slate-200 pt-6 mt-6 items-end">
+                  <div>
+                    {rekening?.rekUtama && (
+                      <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-[11px] space-y-1 mb-3">
+                        <p className="font-bold text-slate-900">Instruksi Pembayaran Transfer:</p>
+                        <p className="text-slate-700 font-mono">
+                          {rekening.bankUtama} : <strong className="text-slate-900">{rekening.rekUtama}</strong>
+                        </p>
+                        <p className="text-slate-600">a/n {rekening.namaUtama}</p>
+                      </div>
+                    )}
+                    {jadwal.catatan && jadwal.catatan !== '-' && (
+                      <p className="text-[11px] text-slate-600 italic">
+                        <strong>Catatan:</strong> {jadwal.catatan}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Tanda Tangan */}
+                  <div className="text-center flex flex-col items-center">
+                    <p className="text-[11px] text-slate-600 mb-2">Hormat Kami,</p>
+                    {finalTtdUrl ? (
+                      <img
+                        src={finalTtdUrl}
+                        alt="Tanda Tangan"
+                        referrerPolicy="no-referrer"
+                        className="max-w-[140px] max-h-[55px] object-contain my-1"
+                      />
+                    ) : (
+                      <div className="h-12"></div>
+                    )}
+                    <div className="border-t border-slate-400 w-36 mt-1 pt-1">
+                      <p className="font-bold text-xs text-slate-900">{owner.namaBrand || 'Admin Studio'}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
             )}
+          </div>
 
-            <div className="my-2.5 border-t-2 border-dashed border-slate-300" />
-
-            {/* Rincian Biaya */}
-            <div className="space-y-1 text-xs">
-              {hargaTambahan > 0 ? (
-                <>
-                  <div className="flex justify-between">
-                    <span className="text-slate-500">{jadwal.paket || 'Harga Paket'}</span>
-                    <span className="font-mono text-slate-900">{keRupiah(hargaPaketDasar)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-500">
-                      {jadwal.namaTambahan ? `Tambahan: ${jadwal.namaTambahan}` : 'Tambahan'}
-                    </span>
-                    <span className="font-mono font-bold text-sky-700">
-                      + {keRupiah(hargaTambahan)}
-                    </span>
-                  </div>
-                </>
-              ) : (
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Total Tarif</span>
-                  <span className="font-mono text-slate-900">{keRupiah(totalTarif)}</span>
+          {/* KOLOM KANAN (PC): PANEL KONTROL AKSI & STATUS LENGKAP */}
+          <div className="hidden lg:flex lg:col-span-5 xl:col-span-4 bg-slate-900 p-6 flex-col justify-between overflow-y-auto no-print">
+            <div className="space-y-4">
+              {/* Ringkasan Cepat */}
+              <div className="rounded-xl bg-slate-950 border border-slate-800 p-4 space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-400">Status Pembayaran:</span>
+                  <span
+                    className={`font-bold px-2 py-0.5 rounded text-[11px] ${
+                      isLunas
+                        ? 'bg-emerald-950 text-emerald-400 border border-emerald-800/50'
+                        : 'bg-rose-950 text-rose-400 border border-rose-800/50'
+                    }`}
+                  >
+                    {isLunas ? 'Lunas' : 'Belum Lunas'}
+                  </span>
                 </div>
-              )}
-
-              {diskon > 0 && (
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Diskon</span>
-                  <span className="font-mono font-bold text-rose-600">- {keRupiah(diskon)}</span>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-400">Total Tagihan:</span>
+                  <span className="font-mono font-bold text-white">
+                    {keRupiah(tagihanSetelahDiskon)}
+                  </span>
                 </div>
-              )}
-
-              <div className="flex justify-between">
-                <span className="text-slate-500">Total Tagihan</span>
-                <span className="font-mono font-bold text-blue-700">
-                  {keRupiah(tagihanSetelahDiskon)}
-                </span>
+                {!isLunas && (
+                  <div className="flex items-center justify-between text-xs border-t border-slate-800 pt-1.5">
+                    <span className="text-rose-400 font-semibold">Sisa Pelunasan:</span>
+                    <span className="font-mono font-bold text-rose-400">
+                      {keRupiah(sisaTagihan)}
+                    </span>
+                  </div>
+                )}
               </div>
 
-              {isLunas && dpDibayar > 0 && dpDibayar < tagihanSetelahDiskon && (
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Telah di-DP (Uang Muka)</span>
-                  <span className="font-mono text-rose-600">- {keRupiah(dpDibayar)}</span>
+              {/* Status Banner / Feedback */}
+              {btStatus && (
+                <div className="rounded-xl bg-slate-800 border border-slate-700 text-sky-300 px-3.5 py-2.5 text-xs font-medium flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-sky-400 shrink-0" />
+                  <span>{btStatus}</span>
                 </div>
               )}
+
+              {/* Kelompok Tombol Aksi Utama */}
+              <div className="space-y-2.5">
+                {invoiceMode === 'A4' ? (
+                  <div className="space-y-3 pt-2">
+                    <div className="rounded-xl bg-slate-950 border border-slate-800 p-4 text-xs space-y-1.5">
+                      <p className="font-bold text-white">📄 Faktur Resmi Format A4</p>
+                      <p className="text-slate-400">
+                        Klik tombol di bawah untuk mengunduh Faktur A4 resmi beresolusi tinggi.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleDownloadA4Invoice}
+                      disabled={isGeneratingPng}
+                      className="w-full flex items-center justify-center gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 py-4 px-4 text-sm font-extrabold text-white shadow-xl cursor-pointer transition-all active:scale-[0.99]"
+                    >
+                      <Download className="w-5 h-5 shrink-0" />
+                      <span>{isGeneratingPng ? 'Menyimpan Faktur A4...' : 'Simpan'}</span>
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    {/* 1. Bagikan Gambar Struk (Hero Action) */}
+                    <button
+                      type="button"
+                      onClick={handleShareReceiptImage}
+                      disabled={isGeneratingPng}
+                      className="w-full flex items-center justify-center gap-2 rounded-xl bg-sky-600 hover:bg-sky-500 py-3.5 px-4 text-xs font-extrabold text-white shadow-lg cursor-pointer transition-all active:scale-[0.99]"
+                    >
+                      <Share2 className="w-4 h-4 shrink-0" />
+                      <span>
+                        {isGeneratingPng ? 'Memproses Gambar Struk...' : 'Bagikan Gambar Struk (Share)'}
+                      </span>
+                    </button>
+
+                    {/* 3. Simpan Gambar PNG */}
+                    <button
+                      type="button"
+                      onClick={handleDownloadPng}
+                      disabled={isGeneratingPng}
+                      className="w-full flex items-center justify-center gap-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 py-2.5 px-4 text-xs font-bold text-white cursor-pointer transition-colors"
+                    >
+                      <FileImage className="w-4 h-4 text-sky-400 shrink-0" />
+                      <span>Simpan Berkas Gambar (PNG)</span>
+                    </button>
+
+                    {/* 4. Cetak Biasa & Bluetooth */}
+                    <div className="grid grid-cols-2 gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={handleStandardPrint}
+                        disabled={isGeneratingPng}
+                        className="flex items-center justify-center gap-1.5 rounded-xl bg-slate-950 hover:bg-slate-800 border border-slate-700 py-2.5 px-3 text-xs font-semibold text-slate-200 cursor-pointer transition-colors"
+                      >
+                        <Printer className="w-4 h-4 text-emerald-400 shrink-0" />
+                        <span>Print Biasa</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleWebBluetoothPrint}
+                        className="flex items-center justify-center gap-1.5 rounded-xl bg-slate-950 hover:bg-slate-800 border border-slate-700 py-2.5 px-3 text-xs font-semibold text-slate-200 cursor-pointer transition-colors"
+                      >
+                        <Bluetooth className="w-4 h-4 text-indigo-400 shrink-0" />
+                        <span>Bluetooth</span>
+                      </button>
+                    </div>
+
+                    {showRawBtFallback && (
+                      <button
+                        type="button"
+                        onClick={handlePrintViaRawBT}
+                        className="w-full py-2.5 px-3 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs flex items-center justify-center gap-2 cursor-pointer shadow mt-1"
+                      >
+                        <Bluetooth className="w-4 h-4 shrink-0" />
+                        <span>Cetak via Aplikasi RawBT</span>
+                      </button>
+                    )}
+                  </>
+                )}
+              </div>
             </div>
 
-            <div className="my-2 border-t border-slate-200" />
-
-            {/* Nominal Dibayar & Sisa */}
-            {isLunas ? (
-              <div className="flex items-center justify-between py-1">
-                <span className="text-slate-600 font-medium">Sisa Pembayaran</span>
-                <span className="font-mono font-bold text-emerald-800 bg-emerald-50 px-3 py-1 rounded text-xs">
-                  Rp. 0 (LUNAS)
-                </span>
-              </div>
-            ) : (
-              <div className="space-y-1">
-                <div className="flex justify-between text-sm">
-                  <span className="text-black font-medium">Telah Dibayar</span>
-                  <span className="font-mono font-bold text-black">{keRupiah(nominalDibayar)}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-rose-700 font-medium">Sisa Pelunasan</span>
-                  <span className="font-mono font-bold text-rose-700">{keRupiah(sisaTagihan)}</span>
-                </div>
-              </div>
-            )}
-
-            {/* Wadah Tanda Tangan Owner Dinamis */}
-            {adaTtd && (
-              <div className="mt-3 mb-1 flex flex-col items-center justify-center">
-                <img
-                  src={owner.ttdUrl}
-                  alt="Tanda Tangan"
-                  referrerPolicy="no-referrer"
-                  className="max-w-[175px] max-h-[70px] object-contain -mb-1"
-                />
-                <span className="text-[11px] font-bold text-slate-800">
-                  ( {owner.namaBrand} )
-                </span>
-              </div>
-            )}
-
-            <p className="mt-2 text-center text-[10px] italic text-slate-500 leading-relaxed">
-              Terima kasih.
-              <br />
-              Simpan struk ini sebagai bukti yang sah.
-            </p>
+            {/* Footer PC */}
+            <div className="pt-4 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={onClose}
+                className="w-full py-2.5 rounded-xl border border-slate-700 hover:bg-slate-800 text-slate-300 font-semibold text-xs transition-colors cursor-pointer"
+              >
+                Tutup Struk
+              </button>
+            </div>
           </div>
         </div>
 
-        {/* Status Info / Bluetooth / Share */}
-        {btStatus && (
-          <div className="mt-2 rounded-lg bg-slate-800 border border-slate-700 text-sky-300 px-3 py-2 text-center text-xs font-medium no-print">
-            {btStatus}
-          </div>
-        )}
-
-        {showRawBtFallback && (
-          <div className="mt-2 no-print">
-            <button
-              type="button"
-              onClick={handlePrintViaRawBT}
-              className="w-full py-2.5 px-3 rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs flex items-center justify-center gap-2 cursor-pointer shadow"
-            >
-              <Bluetooth className="w-4 h-4 shrink-0" />
-              <span>Cetak via Aplikasi RawBT (Khusus HP Android)</span>
-            </button>
-          </div>
-        )}
-
-        {/* AREA TOMBOL AKSI STRUK (Lengkap: Bagikan Gambar, WA, Print Biasa, Print Bluetooth, Unduh PNG) */}
-        <div className="mt-3 space-y-2 no-print">
-          {/* Tombol Utama: Bagikan Gambar Struk (Seperti APK Android) */}
-          <button
-            type="button"
-            onClick={handleShareReceiptImage}
-            disabled={isGeneratingPng}
-            className="w-full flex items-center justify-center gap-2 rounded-lg bg-[#2980B9] hover:bg-[#2471A3] py-3 px-4 text-xs font-extrabold text-white shadow-lg cursor-pointer transition-colors"
-          >
-            <Share2 className="w-4 h-4 shrink-0" />
-            <span>
-              {isGeneratingPng ? 'Memproses Gambar Struk...' : 'Bagikan Gambar Struk (Share)'}
-            </span>
-          </button>
-
+        {/* HP STICKY BOTTOM ACTION BAR (HANYA MUNCUL DI HP < 1024px) */}
+        <div className="block lg:hidden bg-slate-950 border-t border-slate-800 p-3 no-print shrink-0">
+          {btStatus && (
+            <div className="mb-2 text-[11px] text-sky-300 bg-slate-800 px-3 py-1.5 rounded-lg text-center">
+              {btStatus}
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-2">
             <button
               type="button"
-              onClick={handleSendWhatsAppWeb}
+              onClick={handleShareReceiptImage}
               disabled={isGeneratingPng}
-              className="flex items-center justify-center gap-2 rounded-lg bg-[#25D366] hover:bg-[#20bd5a] py-2.5 px-3 text-xs font-bold text-white shadow cursor-pointer transition-colors"
+              className="flex items-center justify-center gap-1.5 rounded-xl bg-sky-600 active:bg-sky-700 py-2.5 px-3 text-xs font-extrabold text-white shadow cursor-pointer"
             >
-              <Send className="w-4 h-4 shrink-0" />
-              <span>Kirim WA Klien</span>
+              <Share2 className="w-3.5 h-3.5 shrink-0" />
+              <span>{isGeneratingPng ? 'Memproses...' : 'Bagikan Gambar'}</span>
             </button>
+
+ <button
+                        type="button"
+                        onClick={handleWebBluetoothPrint}
+                        className="flex items-center justify-center gap-1.5 rounded-xl bg-slate-950 hover:bg-slate-800 border border-slate-700 py-2.5 px-3 text-xs font-semibold text-slate-200 cursor-pointer transition-colors"
+                      >
+                        <Bluetooth className="w-4 h-4 text-indigo-400 shrink-0" />
+                        <span>Bluetooth</span>
+                      </button>
 
             <button
               type="button"
               onClick={handleDownloadPng}
               disabled={isGeneratingPng}
-              className="flex items-center justify-center gap-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-600 py-2.5 px-3 text-xs font-bold text-white shadow cursor-pointer transition-colors"
+              className="flex items-center justify-center gap-1.5 rounded-xl bg-slate-800 border border-slate-700 py-2 px-3 text-[11px] font-semibold text-slate-200 cursor-pointer"
             >
-              <FileImage className="w-4 h-4 text-sky-400 shrink-0" />
-              <span>Simpan Gambar PNG</span>
+              <FileImage className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+              <span>Simpan PNG</span>
             </button>
 
             <button
               type="button"
               onClick={handleStandardPrint}
               disabled={isGeneratingPng}
-              className="flex items-center justify-center gap-2 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 py-2.5 px-3 text-xs font-semibold text-slate-200 cursor-pointer transition-colors"
+              className="flex items-center justify-center gap-1.5 rounded-xl bg-slate-800 border border-slate-700 py-2 px-3 text-[11px] font-semibold text-slate-200 cursor-pointer"
             >
-              <Printer className="w-4 h-4 text-emerald-400 shrink-0" />
-              <span>Print Biasa (USB/PC)</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={handleWebBluetoothPrint}
-              className="flex items-center justify-center gap-2 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 py-2.5 px-3 text-xs font-semibold text-slate-200 cursor-pointer transition-colors"
-            >
-              <Bluetooth className="w-4 h-4 text-indigo-400 shrink-0" />
-              <span>Print Bluetooth</span>
+              <Printer className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+              <span>Print Nota</span>
             </button>
           </div>
         </div>
