@@ -142,6 +142,8 @@ export interface OwnerProfile {
   ctaTeksKustom?: string;
   ctaLinkKustom?: string;
   teksTombolBooking?: string;
+  isWebsiteActive?: boolean;
+  isBookingActive?: boolean;
   webProfil2?: WebProfilSekunder;
   templateWaTagihan: string;
   templateWaKonfirmasi: string;

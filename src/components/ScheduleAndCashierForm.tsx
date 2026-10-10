@@ -400,27 +400,54 @@ export const ScheduleAndCashierForm: React.FC<ScheduleAndCashierFormProps> = ({
 
         {/* Baris 2: Pilih Paket Layanan */}
         <div>
-          <div className="flex items-center justify-between mb-1">
-            <label className="text-slate-400 font-medium">Pilih Paket Layanan *</label>
+          <div className="flex items-center justify-between mb-2">
+            <label className="text-slate-300 font-semibold flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Pilih Paket Layanan *</span>
+            </label>
             <button
               type="button"
               onClick={onOpenMasterPaket}
-              className="text-[11px] font-bold text-sky-400 hover:text-sky-300 cursor-pointer"
+              className="text-[11px] font-bold text-sky-400 hover:text-sky-300 cursor-pointer flex items-center gap-1"
             >
-              + Tambah / Atur Paket
+              <span>+ Atur / Tambah Master Paket</span>
             </button>
           </div>
-          <select
-            value={paketNama}
-            onChange={(e) => handlePaketChange(e.target.value)}
-            className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-white focus:border-sky-500 focus:outline-none"
-          >
-            {paketList.map((p) => (
-              <option key={p.idPaket} value={p.namaPaket}>
-                {p.namaPaket} — {keRupiah(p.hargaPaket)}
-              </option>
-            ))}
-          </select>
+          
+          {/* Gorgeous Service Cards Grid / List */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-52 overflow-y-auto pr-1">
+            {paketList.map((p) => {
+              const isSelected = paketNama === p.namaPaket;
+              return (
+                <div
+                  key={p.idPaket}
+                  onClick={() => handlePaketChange(p.namaPaket)}
+                  className={`p-3 rounded-lg border text-left cursor-pointer transition-all duration-150 relative ${
+                    isSelected
+                      ? 'bg-emerald-950/40 border-emerald-500 shadow-md ring-1 ring-emerald-500/50'
+                      : 'bg-slate-950 border-slate-800 hover:border-slate-700 hover:bg-slate-900/60'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="font-semibold text-white text-xs truncate">
+                      {p.namaPaket}
+                    </div>
+                    {isSelected && (
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                    )}
+                  </div>
+                  <div className="mt-1 font-mono font-bold text-emerald-300 text-xs tabular-nums">
+                    {keRupiah(p.hargaPaket)}
+                  </div>
+                  {p.deskripsiPaket && (
+                    <div className="mt-1 text-[11px] text-slate-400 line-clamp-1">
+                      {p.deskripsiPaket}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </div>
 
         {/* Kolom Agenda Lengkap (Nama Acara, Tanggal, Jam, Lokasi) */}

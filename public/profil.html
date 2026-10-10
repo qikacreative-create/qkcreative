@@ -1253,6 +1253,20 @@
                 let data = matchedDoc.data();
                 if (!idParam) idParam = data.username || ownerUid;
 
+                if (data.isWebsiteActive === false) {
+                    document.body.innerHTML = `
+                        <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:100vh; background:#0F172A; color:#F8FAFC; text-align:center; padding:20px; font-family:'Plus Jakarta Sans',sans-serif;">
+                            <div style="max-width:480px; background:#1E293B; padding:36px; border-radius:24px; border:1px solid #334155; box-shadow:0 20px 40px rgba(0,0,0,0.5);">
+                                <div style="font-size:42px; margin-bottom:16px;">🔒</div>
+                                <h2 style="color:#F43F5E; font-size:22px; font-weight:800; margin-bottom:10px;">Website Sedang Ditutup</h2>
+                                <p style="font-size:14px; color:#94A3B8; line-height:1.6; margin-bottom:24px;">Website dan halaman portofolio <b>${data.namaBrand || 'Studio'}</b> sedang istirahat / ditutup sementara oleh pemilik studio.</p>
+                                <a href="https://wa.me/${data.noWhatsApp || ''}" style="display:inline-block; padding:12px 24px; background:#25D366; color:white; border-radius:12px; text-decoration:none; font-weight:bold; font-size:14px; box-shadow:0 4px 12px rgba(37,211,102,0.3);">Chat WhatsApp Admin</a>
+                            </div>
+                        </div>
+                    `;
+                    return;
+                }
+
                 // Cek apakah halaman ini diminta sebagai Web Profil Ke-2
                 const isWeb2Requested = urlParams.get('web') === '2' || window.forceWeb2Mode === true;
                 if (isWeb2Requested && data.webProfil2 && data.webProfil2.aktif) {

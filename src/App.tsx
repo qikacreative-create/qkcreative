@@ -3,6 +3,7 @@ import {
   Archive,
   BarChart3,
   Bell,
+  Building2,
   Calendar as CalendarIcon,
   CheckCircle2,
   ChevronLeft,
@@ -1419,18 +1420,16 @@ export default function App() {
           }
           style={navBackgroundComputed}
         >
-          {/* Kiri: Tombol Drawer (Khusus HP) + Judul Kafela's Agenda */}
+          {/* Kiri: Tombol Drawer (PC & HP) + Judul Kafela's Agenda */}
           <div className="flex items-center gap-3">
-            {isMobileLayout && (
-              <button
-                type="button"
-                onClick={() => setDrawerOpen(true)}
-                className="p-1.5 rounded-lg hover:bg-white/10 transition-colors cursor-pointer"
-                title="Buka Menu Navigasi"
-              >
-                <Menu className="w-6 h-6 text-white" />
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={() => setDrawerOpen(true)}
+              className="p-1.5 rounded-lg hover:bg-white/10 transition-colors cursor-pointer"
+              title="Buka Menu Navigasi"
+            >
+              <Menu className="w-6 h-6 text-white" />
+            </button>
             <div
               className="flex items-center gap-3 cursor-pointer"
               onClick={() => setActiveTab('KALENDER')}
@@ -1734,8 +1733,8 @@ export default function App() {
                     }`}
                     style={getNavActiveItemStyle(activeTab === 'PAKET')}
                   >
-                    <Layers className="w-4 h-4" />
-                    <span>Paket Layanan</span>
+                    <Layers className="w-4 h-4 text-amber-400" />
+                    <span>Paket Pro / Layanan</span>
                   </button>
 
                   <button
@@ -1801,14 +1800,35 @@ export default function App() {
                     <span>Ganti Tema &amp; Wallpaper</span>
                   </button>
 
-                  <button
+                      <button
+                    type="button"
+                    onClick={() => {
+                      setPengaturanSubTab('PROFIL');
+                      setActiveTab('PENGATURAN');
+                      setDrawerOpen(false);
+                    }}
+                    className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl font-bold transition-all cursor-pointer ${
+                      activeTab === 'PENGATURAN' && pengaturanSubTab === 'PROFIL'
+                        ? 'text-white'
+                        : 'text-[#DDDDDD] hover:bg-white/5'
+                    }`}
+                    style={getNavActiveItemStyle(activeTab === 'PENGATURAN' && pengaturanSubTab === 'PROFIL')}
+                  >
+                    <Building2 className="w-4 h-4 text-sky-400" />
+                    <span>Profil &amp; Struk</span>
+                  </button>
+
+                  <div className="my-1 border-t border-white/10" />
+                  <p className="px-3.5 py-1 text-[10px] font-bold text-amber-400 uppercase tracking-wider">Pengaturan &amp; Website</p>
+
+                    <button
                     type="button"
                     onClick={() => {
                       setPengaturanSubTab('WEB');
                       setActiveTab('PENGATURAN');
                       setDrawerOpen(false);
                     }}
-                    className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-xl font-bold transition-all cursor-pointer ${
+                    className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl font-bold transition-all cursor-pointer ${
                       activeTab === 'PENGATURAN' && pengaturanSubTab === 'WEB'
                         ? 'text-white'
                         : 'text-[#DDDDDD] hover:bg-white/5'
@@ -1816,26 +1836,64 @@ export default function App() {
                     style={getNavActiveItemStyle(activeTab === 'PENGATURAN' && pengaturanSubTab === 'WEB')}
                   >
                     <Globe className="w-4 h-4 text-purple-400" />
-                    <span>Atur Website &amp; Link Booking</span>
+                    <span>Website &amp; Link Booking</span>
                   </button>
 
                   <button
                     type="button"
                     onClick={() => {
-                      setPengaturanSubTab('PROFIL');
+                      setPengaturanSubTab('WA');
                       setActiveTab('PENGATURAN');
                       setDrawerOpen(false);
                     }}
-                    className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-xl font-bold transition-all cursor-pointer ${
-                      activeTab === 'PENGATURAN' && pengaturanSubTab !== 'WEB'
+                    className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl font-bold transition-all cursor-pointer ${
+                      activeTab === 'PENGATURAN' && pengaturanSubTab === 'WA'
                         ? 'text-white'
                         : 'text-[#DDDDDD] hover:bg-white/5'
                     }`}
-                    style={getNavActiveItemStyle(activeTab === 'PENGATURAN' && pengaturanSubTab !== 'WEB')}
+                    style={getNavActiveItemStyle(activeTab === 'PENGATURAN' && pengaturanSubTab === 'WA')}
                   >
-                    <Settings className="w-4 h-4" />
-                    <span>Pengaturan &amp; Rekening</span>
+                    <MessageCircle className="w-4 h-4 text-emerald-400" />
+                    <span>Template WhatsApp</span>
                   </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPengaturanSubTab('PAKET');
+                      setActiveTab('PENGATURAN');
+                      setDrawerOpen(false);
+                    }}
+                    className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl font-bold transition-all cursor-pointer ${
+                      activeTab === 'PENGATURAN' && pengaturanSubTab === 'PAKET'
+                        ? 'text-white'
+                        : 'text-[#DDDDDD] hover:bg-white/5'
+                    }`}
+                    style={getNavActiveItemStyle(activeTab === 'PENGATURAN' && pengaturanSubTab === 'PAKET')}
+                  >
+                    <Layers className="w-4 h-4 text-amber-400" />
+                    <span>Paket Pro (Upgrade)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPengaturanSubTab('REKENING');
+                      setActiveTab('PENGATURAN');
+                      setDrawerOpen(false);
+                    }}
+                    className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl font-bold transition-all cursor-pointer ${
+                      activeTab === 'PENGATURAN' && pengaturanSubTab === 'REKENING'
+                        ? 'text-white'
+                        : 'text-[#DDDDDD] hover:bg-white/5'
+                    }`}
+                    style={getNavActiveItemStyle(activeTab === 'PENGATURAN' && pengaturanSubTab === 'REKENING')}
+                  >
+                    <CreditCard className="w-4 h-4 text-cyan-400" />
+                    <span>Rekening &amp; QRIS</span>
+                  </button>
+
+            
                 </>
               )}
 
@@ -2452,15 +2510,11 @@ export default function App() {
                         </svg>
                          <span>Booking ({ringkasanBulanIni.jmlBookingBaru })</span>
                       </div>
-    <div className="flex items-center gap-1">
+     <div className="flex items-center gap-1">
                         <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 shrink-0">
                           <path
-                            fill="#FFCE1b"
-                            stroke="#000000"
-                            strokeWidth="0.3"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            d="M 3,5 L 8,19 L 12,12 L 16,19 L 21,5 L 17,5 L 14,14 L 12,10 L 10,14 L 7,5 Z"
+                            fill="#E74C3C"
+                            d="M 12,2 C 18,2 23,7 23,13 C 23,19 18,23 12,23 C 6,23 2,19 2,13 C 2,8 5,4 10,3 C 15,2 19,5 19,10 C 19,15 15,19 10,19 C 8,19 6,18 4,16 C 6,17 7,18 10,18 C 14,18 18,14 18,10 C 18,6 14,3.5 10,4.5 C 6,5.5 3,9 3,13 C 3,18 7,22 12,22 C 17,22 22,18 22,13 C 22,8 17,3 12,2 Z"
                           />
                         </svg>
                         <span>Sudah Dp ({ringkasanBulanIni.jmlSudahDp})</span>
@@ -3879,8 +3933,8 @@ export default function App() {
                   <Palette className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-white">Pengaturan Tema &amp; Navigasi APK</h3>
-                  <p className="text-[11px] text-white/60">Sesuaikan warna bar, toolbar &amp; latar belakang wallpaper</p>
+                  <h3 className="text-base font-bold text-white">Pengaturan Tema </h3>
+                  <p className="text-[11px] text-white/60">Sesuaikan warna &amp; latar belakang wallpaper</p>
                 </div>
               </div>
               <button
@@ -3910,12 +3964,10 @@ export default function App() {
                   <div className="flex items-center gap-2">
                     <span className="w-2 h-2 rounded-full bg-sky-400 animate-pulse" />
                     <label className="text-xs font-bold text-sky-300 uppercase tracking-wide">
-                      1. Warna &amp; Latar Belakang Navigasi (Bar &amp; Toolbar)
+                      1. Warna &amp; Latar tema
                     </label>
                   </div>
-                  <p className="text-[11px] text-white/75 mt-1 leading-relaxed">
-                    Fokus mengatur warna <strong>Header Atas</strong>, <strong>Sidebar Desktop</strong>, <strong>Bottom Nav Mobile</strong>, dan <strong>Toolbar Tombol Cepat</strong>. Latar belakang utama aplikasi <em>tidak terpengaruh</em> dan tetap diatur oleh wallpaper.
-                  </p>
+                  
                 </div>
               </div>
 
@@ -3989,72 +4041,7 @@ export default function App() {
               </div>
 
               {/* Gaya Latar Belakang Navigasi (Solid vs Glass vs Gradient vs Dark Accent) */}
-              <div className="space-y-1.5 pt-2 border-t border-white/10">
-                <span className="text-[11px] font-bold text-white/80">Gaya Efek Latar Navigasi &amp; Toolbar:</span>
-                <div className="grid grid-cols-2 gap-2">
-                  {[
-                    { id: 'SOLID', label: 'Solid Elegan', desc: 'Pekat & Kontras' },
-                    { id: 'GLASS', label: 'Kaca Transparan', desc: 'Backdrop Blur Kaca' },
-                    { id: 'GRADIENT', label: 'Gradien Modern', desc: 'Nuansa Gradasi Mewah' },
-                    { id: 'DARK_ACCENT', label: 'Aksen Gelap', desc: 'Bar Gelap + Garis Aksen' },
-                  ].map((styleOpt) => {
-                    const isSelected = (owner.gayaLatarNavigasi || 'SOLID') === styleOpt.id;
-                    return (
-                      <button
-                        key={styleOpt.id}
-                        type="button"
-                        onClick={async () => {
-                          const val = styleOpt.id as 'SOLID' | 'GLASS' | 'GRADIENT' | 'DARK_ACCENT';
-                          setOwner((prev) => ({ ...prev, gayaLatarNavigasi: val }));
-                          if (sessionMode === 'FIREBASE') {
-                            await saveOwnerProfileToFirebase(targetOwnerId, { gayaLatarNavigasi: val });
-                          }
-                        }}
-                        className={`p-2.5 rounded-xl border text-left cursor-pointer transition-all ${
-                          isSelected
-                            ? 'bg-sky-600/30 border-sky-400 text-white shadow-sm ring-1 ring-sky-400'
-                            : 'bg-black/30 border-white/15 text-white/70 hover:text-white'
-                        }`}
-                      >
-                        <p className="text-xs font-bold">{styleOpt.label}</p>
-                        <p className="text-[10px] text-white/50">{styleOpt.desc}</p>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Slider Opasitas Navigasi */}
-              <div className="space-y-1.5 pt-2">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-[11px] font-bold text-white/80">
-                    Transparansi Bar &amp; Toolbar:
-                  </span>
-                  <span className="font-mono font-bold text-xs text-sky-400">
-                    {owner.opasitasNavigasi ?? 95}%
-                  </span>
-                </div>
-                <input
-                  type="range"
-                  min="60"
-                  max="100"
-                  step="5"
-                  value={owner.opasitasNavigasi ?? 95}
-                  onChange={async (e) => {
-                    const val = Number(e.target.value);
-                    setOwner((prev) => ({ ...prev, opasitasNavigasi: val }));
-                    if (sessionMode === 'FIREBASE') {
-                      await saveOwnerProfileToFirebase(targetOwnerId, { opasitasNavigasi: val });
-                    }
-                  }}
-                  className="w-full accent-sky-400 cursor-pointer h-2 bg-white/20 rounded-lg"
-                />
-                <div className="flex justify-between text-[10px] text-white/50">
-                  <span>60% (Transparan)</span>
-                  <span>80% (Sedang)</span>
-                  <span>100% (Solid Pekat)</span>
-                </div>
-              </div>
+             
             </div>
 
             {/* ================================================================= */}

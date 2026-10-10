@@ -26,7 +26,7 @@ export default defineConfig(() => {
         manifest: {
           id: '/',
           name: "Kafela's Agenda",
-          short_name: 'KafelaAgenda',
+          short_name: 'Kafelas Agenda',
           description:
             'Aplikasi manajemen jadwal agenda, kasir cepat, struk pembayaran, dan laporan keuangan.',
           theme_color: '#6e3b20',

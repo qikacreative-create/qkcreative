@@ -416,6 +416,17 @@
             }
 
             const dataBrand = docBrand.data();
+            if (dataBrand.isBookingActive === false) {
+                document.querySelector('.form-container').innerHTML = `
+                    <div style="text-align:center; padding: 40px 10px; font-family:'Plus Jakarta Sans',sans-serif;">
+                        <div style="font-size:48px; margin-bottom:16px;">🔒</div>
+                        <h2 style="color:#E74C3C; font-size:22px; font-weight:800; margin-bottom:10px;">Form Booking Ditutup</h2>
+                        <p style="font-size:14px; color:#475569; line-height:1.6; margin-bottom:24px;">Maaf, form booking online untuk <b>${dataBrand.namaBrand || 'Studio'}</b> sedang ditutup sementara oleh pemilik studio. Silakan hubungi admin via WhatsApp untuk reservasi.</p>
+                        <a href="https://wa.me/${dataBrand.noWhatsApp || ''}" style="display:inline-block; padding:12px 24px; background:#25D366; color:white; border-radius:12px; text-decoration:none; font-weight:bold; font-size:14px; box-shadow:0 4px 12px rgba(37,211,102,0.3);">Chat WhatsApp Admin</a>
+                    </div>
+                `;
+                return;
+            }
             if (!usernameParam) {
                 usernameParam = dataBrand.username || ownerUid;
                 document.getElementById('linkKembaliProfil').href = `/profil.html?id=${encodeURIComponent(usernameParam)}${temaOverride ? '&tema=' + encodeURIComponent(temaOverride) : ''}`;

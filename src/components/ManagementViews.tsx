@@ -1370,6 +1370,13 @@ export const PengaturanStudioView: React.FC<{
   const [ctaTeksKustom, setCtaTeksKustom] = useState(owner.ctaTeksKustom || '');
   const [ctaLinkKustom, setCtaLinkKustom] = useState(owner.ctaLinkKustom || '');
   const [teksTombolBooking, setTeksTombolBooking] = useState(owner.teksTombolBooking || '');
+  const [isWebsiteActive, setIsWebsiteActive] = useState<boolean>(owner.isWebsiteActive ?? true);
+  const [isBookingActive, setIsBookingActive] = useState<boolean>(owner.isBookingActive ?? true);
+  const [openSectionTema, setOpenSectionTema] = useState<boolean>(false);
+  const [openSectionPenutup, setOpenSectionPenutup] = useState<boolean>(false);
+  const [openSectionSosmed, setOpenSectionSosmed] = useState<boolean>(false);
+  const [openSectionUpload, setOpenSectionUpload] = useState<boolean>(false);
+  const [openSectionWeb2, setOpenSectionWeb2] = useState<boolean>(false);
 
   // Website Profil Ke-2 (Sub-Brand / Spesialisasi)
   const [web2Aktif, setWeb2Aktif] = useState(owner.webProfil2?.aktif || false);
@@ -1424,6 +1431,8 @@ export const PengaturanStudioView: React.FC<{
     setCtaTeksKustom(owner.ctaTeksKustom || '');
     setCtaLinkKustom(owner.ctaLinkKustom || '');
     setTeksTombolBooking(owner.teksTombolBooking || '');
+    setIsWebsiteActive(owner.isWebsiteActive ?? true);
+    setIsBookingActive(owner.isBookingActive ?? true);
 
     setWeb2Aktif(owner.webProfil2?.aktif || false);
     setWeb2SubJudul(owner.webProfil2?.subJudul || '');
@@ -1620,34 +1629,6 @@ export const PengaturanStudioView: React.FC<{
 
   return (
     <div className="max-w-3xl mx-auto space-y-4">
-      {/* SUB-MENU TAB PILIHAN AGAR TIDAK PUSING (Fokus 1 Menu per Layar) */}
-      <div className="rounded-xl bg-slate-900/95 border border-slate-800 p-2 flex flex-wrap items-center gap-1.5">
-        {(
-          [
-            { id: 'PROFIL', label: '🏢 Profil & Struk' },
-            { id: 'WEB', label: '🌐 Website & Link Booking' },
-            { id: 'REKENING', label: '💳 Rekening & QRIS' },
-            { id: 'WA', label: '💬 Template WhatsApp' },
-            { id: 'PAKET', label: '⭐ Paket (Pro: Fitur Inti | Ultimate: LiveSync+Web2)' },
-          ] as { id: PengaturanSubTab; label: string }[]
-        ).map((item) => {
-          const isActive = subTab === item.id;
-          return (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => setSubTab(item.id)}
-              className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
-                isActive
-                  ? 'bg-[#2980B9] text-white shadow'
-                  : 'bg-slate-950/70 text-slate-300 hover:bg-slate-800'
-              }`}
-            >
-              {item.label}
-            </button>
-          );
-        })}
-      </div>
 
       {savedBanner && (
         <>
@@ -1793,11 +1774,58 @@ export const PengaturanStudioView: React.FC<{
             <Globe className="w-4 h-4 text-purple-400" />
             <div>
               <h3 className="text-sm font-bold text-white">
-                Pengaturan Website Pribadi &amp; Link Booking Klien
+                Website &amp; Link Booking
               </h3>
               <p className="text-[11px] text-slate-400">
-                Bagikan tautan ini ke bio Instagram/TikTok atau kirim ke WhatsApp calon klien
+                Bagikan tautan ini ke bio sosmed atau kirim ke WhatsApp klien
               </p>
+            </div>
+          </div>
+
+          {/* TOGGLE BUKA / TUTUP WEBSITE & LINK BOOKING */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 p-4 rounded-xl bg-slate-950 border border-slate-800">
+            <div className="flex items-center justify-between">
+              <div>
+                <span className="font-bold text-white block text-xs">Status Website Studio</span>
+                <span className="text-[11px] text-slate-400">
+                  {isWebsiteActive ? 'Website Aktif (Buka)' : 'Website Ditutup (Istirahat)'}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  const newVal = !isWebsiteActive;
+                  setIsWebsiteActive(newVal);
+                  handleSaveOwnerWithToast({ isWebsiteActive: newVal }, newVal ? 'Website berhasil dibuka!' : 'Website ditutup.');
+                }}
+                className={`w-12 h-6 flex items-center rounded-full p-1 transition-colors cursor-pointer ${
+                  isWebsiteActive ? 'bg-emerald-600 justify-end' : 'bg-slate-700 justify-start'
+                }`}
+              >
+                <div className="bg-white w-4 h-4 rounded-full shadow-md transform transition-transform" />
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <div>
+                <span className="font-bold text-white block text-xs">Status Link Booking Online</span>
+                <span className="text-[11px] text-slate-400">
+                  {isBookingActive ? 'Booking Aktif (Buka)' : 'Booking Ditutup'}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  const newVal = !isBookingActive;
+                  setIsBookingActive(newVal);
+                  handleSaveOwnerWithToast({ isBookingActive: newVal }, newVal ? 'Link Booking berhasil dibuka!' : 'Link Booking ditutup.');
+                }}
+                className={`w-12 h-6 flex items-center rounded-full p-1 transition-colors cursor-pointer ${
+                  isBookingActive ? 'bg-emerald-600 justify-end' : 'bg-slate-700 justify-start'
+                }`}
+              >
+                <div className="bg-white w-4 h-4 rounded-full shadow-md transform transition-transform" />
+              </button>
             </div>
           </div>
 
@@ -1986,492 +2014,578 @@ export const PengaturanStudioView: React.FC<{
             )}
           </div>
 
-          {/* 1. PILIHAN ARSITEKTUR TATA LETAK WEBSITE */}
-          <div className="rounded-xl bg-slate-950 border border-slate-800 p-4 space-y-3">
-            <div>
-              <h4 className="font-bold text-white text-xs flex items-center gap-1.5">
-                <span>📱</span>
-                <span>Pilih Gaya Tata Letak Website (UX Mode)</span>
-              </h4>
-              <p className="text-[11px] text-slate-400">
-                Pilih apakah website klien tampil dalam mode buku geser samping atau scroll ke bawah alami:
-              </p>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <button
-                type="button"
-                onClick={() => setLayoutWeb('HORIZONTAL_BOOK')}
-                className={`text-left rounded-xl p-3.5 border transition-all cursor-pointer flex flex-col justify-between gap-2 ${
-                  layoutWeb === 'HORIZONTAL_BOOK'
-                    ? 'border-purple-500 bg-purple-950/30 ring-2 ring-purple-500/40'
-                    : 'border-slate-800 bg-slate-900/50 hover:border-slate-700'
-                }`}
-              >
-                <div>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-xs font-bold text-white flex items-center gap-1.5">
-                      <span>📖</span>
-                      <span>Buku Editorial Majalah</span>
-                    </span>
-                    {layoutWeb === 'HORIZONTAL_BOOK' && (
-                      <span className="px-2 py-0.5 rounded bg-purple-500 text-white text-[10px] font-extrabold">
-                        AKTIF
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-[11px] text-slate-400 leading-relaxed">
-                    Sistem geser samping (horizontal swipe per bab). Terasa seperti membuka portofolio cetak / lookbook eksklusif.
-                  </p>
-                </div>
-                <span className="text-[10px] text-purple-400 font-semibold">Gaya Majalah Seni (Geser Kanan &rarr;)</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setLayoutWeb('VERTICAL_LANDING')}
-                className={`text-left rounded-xl p-3.5 border transition-all cursor-pointer flex flex-col justify-between gap-2 ${
-                  layoutWeb === 'VERTICAL_LANDING'
-                    ? 'border-emerald-500 bg-emerald-950/30 ring-2 ring-emerald-500/40'
-                    : 'border-slate-800 bg-slate-900/50 hover:border-slate-700'
-                }`}
-              >
-                <div>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-xs font-bold text-white flex items-center gap-1.5">
-                      <span>⚡</span>
-                      <span>Landing Page Modern (Scroll Bawah)</span>
-                    </span>
-                    {layoutWeb === 'VERTICAL_LANDING' && (
-                      <span className="px-2 py-0.5 rounded bg-emerald-500 text-slate-950 text-[10px] font-extrabold">
-                        AKTIF
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-[11px] text-slate-400 leading-relaxed">
-                    Scroll ke bawah alami vertikal. Hero section megah, grid foto estetik, sticky quick bar, dan konversi booking lebih tinggi.
-                  </p>
-                </div>
-                <span className="text-[10px] text-emerald-400 font-semibold">Rekomendasi HP Smartphone (&darr; Scroll Bawah)</span>
-              </button>
-            </div>
-          </div>
-
-          {/* 2. PILIHAN TEMA WARNA VISUAL */}
-          <div className="rounded-xl bg-slate-950 border border-slate-800 p-4 space-y-2.5">
-            <div className="flex items-center justify-between">
-              <div>
-                <h4 className="font-bold text-white text-xs">
-                  🎨 Pilih Palet Warna &amp; Nuansa Visual (profil.html)
-                </h4>
-                <p className="text-[11px] text-slate-400">
-                  Dapat dipadukan dengan gaya Geser Samping maupun Scroll ke Bawah:
-                </p>
+          {/* 1. PILIHAN TEMA & TATA LETAK (TERTUTUP DEFAULT) */}
+          <div className="rounded-xl bg-slate-950 border border-slate-800 overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setOpenSectionTema(!openSectionTema)}
+              className="w-full flex items-center justify-between p-3.5 text-left font-bold text-white text-xs hover:bg-slate-900/50 cursor-pointer"
+            >
+              <div className="flex items-center gap-2">
+                <span>🎨</span>
+                <span>Pilih Tema, Warna &amp; Tata Letak Website</span>
               </div>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
-              {(
-                [
-                  {
-                    id: 'MODERN_STUDIO',
-                    title: '1. Amour Ivory & Rose Gold',
-                    subtitle: 'Krem Hangat, Dusty Rose & Emas Lembut',
-                    badge: 'IVORY ROSE',
-                    previewBg: 'bg-gradient-to-br from-rose-200 via-amber-50 to-rose-100',
-                    accentBorder: 'border-rose-400',
-                  },
-                  {
-                    id: 'LUXURY_GOLD',
-                    title: '2. Royal Obsidian & Gold',
-                    subtitle: 'Hitam Obsidian & Tinta Emas Mewah',
-                    badge: 'ROYAL GOLD',
-                    previewBg: 'bg-gradient-to-br from-neutral-950 via-stone-900 to-amber-950',
-                    accentBorder: 'border-amber-500',
-                  },
-                  {
-                    id: 'CLEAN_MINIMALIST',
-                    title: '3. Botanical White & Sage',
-                    subtitle: 'Putih Bersih & Aksen Hijau Sage Modern',
-                    badge: 'BOTANICAL SAGE',
-                    previewBg: 'bg-gradient-to-br from-slate-100 via-white to-emerald-50',
-                    accentBorder: 'border-emerald-500',
-                  },
-                  {
-                    id: 'VERTICAL_LANDING',
-                    title: '4. Obsidian Glow & Amber',
-                    subtitle: 'Gelap Modern & Aksen Emas Hangat',
-                    badge: 'OBSIDIAN GLOW',
-                    previewBg: 'bg-gradient-to-br from-slate-950 via-slate-900 to-amber-900',
-                    accentBorder: 'border-amber-400',
-                  },
-                ] as const
-              ).map((t) => {
-                const isSelected = temaWeb === t.id;
-                return (
-                  <button
-                    key={t.id}
-                    type="button"
-                    onClick={() => setTemaWeb(t.id)}
-                    className={`text-left rounded-xl p-3 border transition-all cursor-pointer flex flex-col justify-between gap-2 ${
-                      isSelected
-                        ? `${t.accentBorder} bg-slate-900 ring-2 ring-purple-500/40`
-                        : 'border-slate-800 bg-slate-900/50 hover:border-slate-700'
-                    }`}
-                  >
-                    <div className="space-y-1.5">
-                      <div className={`h-10 w-full rounded-lg ${t.previewBg} border border-white/10 flex items-center justify-between px-2.5`}>
-                        <span className={`text-[10px] font-extrabold tracking-wider ${t.id === 'LUXURY_GOLD' || t.id === 'VERTICAL_LANDING' ? 'text-white' : 'text-slate-900'}`}>
-                          {t.badge}
-                        </span>
-                        {isSelected && (
-                          <span className="px-2 py-0.5 rounded bg-emerald-500 text-slate-950 text-[10px] font-extrabold">
-                            AKTIF
+              <span className="text-slate-400 text-xs px-2 py-0.5 rounded bg-slate-950 border border-slate-700">
+                {openSectionTema ? '▲' : '▼'}
+              </span>
+            </button>
+            {openSectionTema && (
+              <div className="p-4 pt-0 space-y-4 border-t border-slate-800/80">
+                {/* PILIHAN ARSITEKTUR TATA LETAK WEBSITE */}
+                <div className="pt-3">
+                  <div>
+                    <h4 className="font-bold text-white text-xs flex items-center gap-1.5">
+                      <span>📱</span>
+                      <span>Pilih Gaya Tata Letak Website (UX Mode)</span>
+                    </h4>
+                    <p className="text-[11px] text-slate-400">
+                      Pilih apakah website klien tampil dalam mode buku geser samping atau scroll ke bawah alami:
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2">
+                    <button
+                      type="button"
+                      onClick={() => setLayoutWeb('HORIZONTAL_BOOK')}
+                      className={`text-left rounded-xl p-3.5 border transition-all cursor-pointer flex flex-col justify-between gap-2 ${
+                        layoutWeb === 'HORIZONTAL_BOOK'
+                          ? 'border-purple-500 bg-purple-950/30 ring-2 ring-purple-500/40'
+                          : 'border-slate-800 bg-slate-900/50 hover:border-slate-700'
+                      }`}
+                    >
+                      <div>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                            <span>📖</span>
+                            <span>Buku Editorial Majalah</span>
                           </span>
-                        )}
+                          {layoutWeb === 'HORIZONTAL_BOOK' && (
+                            <span className="px-2 py-0.5 rounded bg-purple-500 text-white text-[10px] font-extrabold">
+                              AKTIF
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-slate-400 leading-relaxed">
+                          Sistem geser samping (horizontal swipe per bab). Terasa seperti membuka portofolio cetak / lookbook eksklusif.
+                        </p>
                       </div>
-                      <p className="font-bold text-white text-xs">{t.title}</p>
-                      <p className="text-[10px] text-slate-400 leading-snug">{t.subtitle}</p>
+                      <span className="text-[10px] text-purple-400 font-semibold">Gaya Majalah Seni (Geser Kanan &rarr;)</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setLayoutWeb('VERTICAL_LANDING')}
+                      className={`text-left rounded-xl p-3.5 border transition-all cursor-pointer flex flex-col justify-between gap-2 ${
+                        layoutWeb === 'VERTICAL_LANDING'
+                          ? 'border-emerald-500 bg-emerald-950/30 ring-2 ring-emerald-500/40'
+                          : 'border-slate-800 bg-slate-900/50 hover:border-slate-700'
+                      }`}
+                    >
+                      <div>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                            <span>⚡</span>
+                            <span>Landing Page Modern (Scroll Bawah)</span>
+                          </span>
+                          {layoutWeb === 'VERTICAL_LANDING' && (
+                            <span className="px-2 py-0.5 rounded bg-emerald-500 text-slate-950 text-[10px] font-extrabold">
+                              AKTIF
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-slate-400 leading-relaxed">
+                          Scroll ke bawah alami vertikal. Hero section megah, grid foto estetik, sticky quick bar, dan konversi booking lebih tinggi.
+                        </p>
+                      </div>
+                      <span className="text-[10px] text-emerald-400 font-semibold">Rekomendasi HP Smartphone (&darr; Scroll Bawah)</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* PILIHAN TEMA WARNA VISUAL */}
+                <div className="space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="font-bold text-white text-xs">
+                        🎨 Pilih Palet Warna &amp; Nuansa Visual (profil.html)
+                      </h4>
+                      <p className="text-[11px] text-slate-400">
+                        Dapat dipadukan dengan gaya Geser Samping maupun Scroll ke Bawah:
+                      </p>
                     </div>
-                  </button>
-                );
-              })}
-            </div>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+                    {(
+                      [
+                        {
+                          id: 'MODERN_STUDIO',
+                          title: '1. Amour Ivory & Rose Gold',
+                          subtitle: 'Krem Hangat, Dusty Rose & Emas Lembut',
+                          badge: 'IVORY ROSE',
+                          previewBg: 'bg-gradient-to-br from-rose-200 via-amber-50 to-rose-100',
+                          accentBorder: 'border-rose-400',
+                        },
+                        {
+                          id: 'LUXURY_GOLD',
+                          title: '2. Royal Obsidian & Gold',
+                          subtitle: 'Hitam Obsidian & Tinta Emas Mewah',
+                          badge: 'ROYAL GOLD',
+                          previewBg: 'bg-gradient-to-br from-neutral-950 via-stone-900 to-amber-950',
+                          accentBorder: 'border-amber-500',
+                        },
+                        {
+                          id: 'CLEAN_MINIMALIST',
+                          title: '3. Botanical White & Sage',
+                          subtitle: 'Putih Bersih & Aksen Hijau Sage Modern',
+                          badge: 'BOTANICAL SAGE',
+                          previewBg: 'bg-gradient-to-br from-slate-100 via-white to-emerald-50',
+                          accentBorder: 'border-emerald-500',
+                        },
+                        {
+                          id: 'VERTICAL_LANDING',
+                          title: '4. Obsidian Glow & Amber',
+                          subtitle: 'Gelap Modern & Aksen Emas Hangat',
+                          badge: 'OBSIDIAN GLOW',
+                          previewBg: 'bg-gradient-to-br from-slate-950 via-slate-900 to-amber-900',
+                          accentBorder: 'border-amber-400',
+                        },
+                      ] as const
+                    ).map((t) => {
+                      const isSelected = temaWeb === t.id;
+                      return (
+                        <button
+                          key={t.id}
+                          type="button"
+                          onClick={() => setTemaWeb(t.id)}
+                          className={`text-left rounded-xl p-3 border transition-all cursor-pointer flex flex-col justify-between gap-2 ${
+                            isSelected
+                              ? `${t.accentBorder} bg-slate-900 ring-2 ring-purple-500/40`
+                              : 'border-slate-800 bg-slate-900/50 hover:border-slate-700'
+                          }`}
+                        >
+                          <div className="space-y-1.5">
+                            <div className={`h-10 w-full rounded-lg ${t.previewBg} border border-white/10 flex items-center justify-between px-2.5`}>
+                              <span className={`text-[10px] font-extrabold tracking-wider ${t.id === 'LUXURY_GOLD' || t.id === 'VERTICAL_LANDING' ? 'text-white' : 'text-slate-900'}`}>
+                                {t.badge}
+                              </span>
+                              {isSelected && (
+                                <span className="px-2 py-0.5 rounded bg-emerald-500 text-slate-950 text-[10px] font-extrabold">
+                                  AKTIF
+                                </span>
+                              )}
+                            </div>
+                            <p className="font-bold text-white text-xs">{t.title}</p>
+                            <p className="text-[10px] text-slate-400 leading-snug">{t.subtitle}</p>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* 3. PENGATURAN HALAMAN PENUTUP & KONTAK */}
-          <div className="rounded-xl bg-slate-950 border border-slate-800 p-4 space-y-3">
-            <div>
-              <h4 className="font-bold text-white text-xs flex items-center gap-1.5">
+          {/* 2. PENGATURAN HALAMAN PENUTUP & KONTAK (TERTUTUP DEFAULT) */}
+          <div className="rounded-xl bg-slate-950 border border-slate-800 overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setOpenSectionPenutup(!openSectionPenutup)}
+              className="w-full flex items-center justify-between p-3.5 text-left font-bold text-white text-xs hover:bg-slate-900/50 cursor-pointer"
+            >
+              <div className="flex items-center gap-2">
                 <span>💌</span>
                 <span>Halaman Penutup &amp; Kontak</span>
-              </h4>
-              <p className="text-[11px] text-slate-400">
-                Atur pesan penutup, jam operasional, tombol tautan, dan teks tombol booking:
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="block text-slate-400 mb-1">
-                  Pesan Penutup (Tampil di atas tombol booking)
-                </label>
-                <textarea
-                  rows={2}
-                  placeholder="Contoh: Setiap momen berharga layak diabadikan dengan sentuhan terbaik. Diskusikan konsep impianmu bersama kami."
-                  value={pesanPenutupWeb}
-                  onChange={(e) => setPesanPenutupWeb(e.target.value)}
-                  className="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-white text-xs leading-relaxed"
-                />
               </div>
-              <div>
-                <label className="block text-slate-400 mb-1">
-                  Jam Operasional / Keterangan
-                </label>
-                <input
-                  type="text"
-                  placeholder="Contoh: Buka Setiap Hari: 09.00 - 21.00 WIB (Reservasi H-1)"
-                  value={jamOperasionalWeb}
-                  onChange={(e) => setJamOperasionalWeb(e.target.value)}
-                  className="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-white text-xs"
-                />
-                <div className="mt-2.5">
-                  <label className="block text-slate-400 mb-1">
-                    Teks Tombol Booking Utama
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="Contoh: Booking Online / Reservasi Jadwal"
-                    value={teksTombolBooking}
-                    onChange={(e) => setTeksTombolBooking(e.target.value)}
-                    className="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-white text-xs"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-800">
-              <div>
-                <label className="block text-slate-400 mb-1">
-                  Label Tombol Tambahan (Opsional)
-                </label>
-                <input
-                  type="text"
-                  placeholder="Contoh: Chat WhatsApp Konsultasi / Buka Google Maps"
-                  value={ctaTeksKustom}
-                  onChange={(e) => setCtaTeksKustom(e.target.value)}
-                  className="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-white text-xs"
-                />
-              </div>
-              <div>
-                <label className="block text-slate-400 mb-1">
-                  Tautan Tombol Tambahan (Opsional)
-                </label>
-                <input
-                  type="text"
-                  placeholder="https://wa.me/628... atau link Google Maps / Drive"
-                  value={ctaLinkKustom}
-                  onChange={(e) => setCtaLinkKustom(e.target.value)}
-                  className="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-white text-xs"
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-slate-400 mb-1">Link Instagram</label>
-              <input
-                type="text"
-                placeholder="https://instagram.com/..."
-                value={linkIg}
-                onChange={(e) => setLinkIg(e.target.value)}
-                className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-white"
-              />
-            </div>
-            <div>
-              <label className="block text-slate-400 mb-1">Link TikTok</label>
-              <input
-                type="text"
-                placeholder="https://tiktok.com/@..."
-                value={linkTiktok}
-                onChange={(e) => setLinkTiktok(e.target.value)}
-                className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-white"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div>
-              <label className="block text-slate-400 mb-1">Cabang / Lokasi 1</label>
-              <input
-                type="text"
-                placeholder="Contoh: Cabang Pusat..."
-                value={lokasi1}
-                onChange={(e) => setLokasi1(e.target.value)}
-                className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-white"
-              />
-            </div>
-            <div>
-              <label className="block text-slate-400 mb-1">Cabang / Lokasi 2 (Opsional)</label>
-              <input
-                type="text"
-                placeholder="Cabang 2..."
-                value={lokasi2}
-                onChange={(e) => setLokasi2(e.target.value)}
-                className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-white"
-              />
-            </div>
-            <div>
-              <label className="block text-slate-400 mb-1">Cabang / Lokasi 3 (Opsional)</label>
-              <input
-                type="text"
-                placeholder="Cabang 3..."
-                value={lokasi3}
-                onChange={(e) => setLokasi3(e.target.value)}
-                className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-white"
-              />
-            </div>
-          </div>
-
-          {/* UPLOAD LOGO & 8 FOTO GALERI */}
-          <div className="space-y-3 pt-3 border-t border-slate-800">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <label className="block text-slate-200 font-bold text-xs">
-                  Foto Profil / Logo &amp; Galeri Portofolio
-                </label>
-                <p className="text-[11px] text-slate-400">
-                  <strong className="text-amber-300">Foto 1</strong> untuk latar belakang sampul utama. <strong className="text-sky-300">Foto 2 s/d 8</strong> tampil di galeri portofolio web.
-                </p>
-              </div>
-            </div>
-
-            {/* Baris Upload Logo Brand Landing Page */}
-            <div className="rounded-xl bg-slate-950 border border-slate-800 p-3 flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <img
-                  src={logoWeb || '/logo-kafela.svg'}
-                  alt="Logo Studio"
-                  className="w-14 h-14 rounded-full object-cover border-2 border-amber-500/70 bg-white shrink-0"
-                />
-                <div>
-                  <p className="font-bold text-white text-xs">Foto Profil / Logo Brand di Aplikasi &amp; Website</p>
-                  <p className="text-[11px] text-slate-400">
-                    {uploadingSlot === 'LOGO'
-                      ? 'Memproses logo...'
-                      : logoWeb && logoWeb !== '/logo-kafela.svg'
-                      ? 'Logo kustom terpasang'
-                      : "Menggunakan Logo Resmi kafela's Agenda"}
+              <span className="text-slate-400 text-xs px-2 py-0.5 rounded bg-slate-950 border border-slate-700">
+                {openSectionPenutup ? '▲' : '▼'}
+              </span>
+            </button>
+            {openSectionPenutup && (
+              <div className="p-4 pt-0 space-y-3 border-t border-slate-800/80">
+                <div className="pt-3">
+                  <p className="text-[11px] text-slate-400 mb-2">
+                    Atur pesan penutup, jam operasional, tombol tautan, dan teks tombol booking:
                   </p>
                 </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-slate-400 mb-1">
+                      Pesan Penutup (Tampil di atas tombol booking)
+                    </label>
+                    <textarea
+                      rows={2}
+                      placeholder="Contoh: Setiap momen berharga layak diabadikan dengan sentuhan terbaik. Diskusikan konsep impianmu bersama kami."
+                      value={pesanPenutupWeb}
+                      onChange={(e) => setPesanPenutupWeb(e.target.value)}
+                      className="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-white text-xs leading-relaxed"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-slate-400 mb-1">
+                      Jam Operasional / Keterangan
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Contoh: Buka Setiap Hari: 09.00 - 21.00 WIB (Reservasi H-1)"
+                      value={jamOperasionalWeb}
+                      onChange={(e) => setJamOperasionalWeb(e.target.value)}
+                      className="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-white text-xs"
+                    />
+                    <div className="mt-2.5">
+                      <label className="block text-slate-400 mb-1">
+                        Teks Tombol Booking Utama
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Contoh: Booking Online / Reservasi Jadwal"
+                        value={teksTombolBooking}
+                        onChange={(e) => setTeksTombolBooking(e.target.value)}
+                        className="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-white text-xs"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-800">
+                  <div>
+                    <label className="block text-slate-400 mb-1">
+                      Label Tombol Tambahan (Opsional)
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Contoh: Chat WhatsApp Konsultasi / Buka Google Maps"
+                      value={ctaTeksKustom}
+                      onChange={(e) => setCtaTeksKustom(e.target.value)}
+                      className="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-white text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-slate-400 mb-1">
+                      Tautan Tombol Tambahan (Opsional)
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="https://wa.me/628... atau link Google Maps / Drive"
+                      value={ctaLinkKustom}
+                      onChange={(e) => setCtaLinkKustom(e.target.value)}
+                      className="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-white text-xs"
+                    />
+                  </div>
+                </div>
               </div>
+            )}
+          </div>
+
+          {/* 3. LINK IG, TIKTOK & CABANG / LOKASI (TERTUTUP DEFAULT) */}
+          <div className="rounded-xl bg-slate-950 border border-slate-800 overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setOpenSectionSosmed(!openSectionSosmed)}
+              className="w-full flex items-center justify-between p-3.5 text-left font-bold text-white text-xs hover:bg-slate-900/50 cursor-pointer"
+            >
               <div className="flex items-center gap-2">
-                <label className="px-3 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs cursor-pointer">
-                  <span>📷 Ganti Logo</span>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={(e) =>
-                      handleSelectPhotoFromGallery('LOGO', e.target.files?.[0], 500, setLogoWeb)
-                    }
-                  />
-                </label>
-                {logoWeb && logoWeb !== '/logo-kafela.svg' && (
-                  <button
-                    type="button"
-                    onClick={() => setLogoWeb('/logo-kafela.svg')}
-                    className="px-2.5 py-2 rounded-lg bg-amber-600/20 hover:bg-amber-600/35 text-amber-300 font-bold text-xs cursor-pointer"
-                  >
-                    Reset ke Logo Kafela
-                  </button>
-                )}
+                <span>🔗</span>
+                <span>Link IG, TikTok &amp; Cabang / Lokasi </span>
               </div>
-            </div>
+              <span className="text-slate-400 text-xs px-2 py-0.5 rounded bg-slate-950 border border-slate-700">
+                {openSectionSosmed ? '▲' : '▼'}
+              </span>
+            </button>
+            {openSectionSosmed && (
+              <div className="p-4 pt-0 space-y-3.5 border-t border-slate-800/80">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-3">
+                  <div>
+                    <label className="block text-slate-400 mb-1">Link Instagram</label>
+                    <input
+                      type="text"
+                      placeholder="https://instagram.com/..."
+                      value={linkIg}
+                      onChange={(e) => setLinkIg(e.target.value)}
+                      className="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-slate-400 mb-1">Link TikTok</label>
+                    <input
+                      type="text"
+                      placeholder="https://tiktok.com/@..."
+                      value={linkTiktok}
+                      onChange={(e) => setLinkTiktok(e.target.value)}
+                      className="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-white"
+                    />
+                  </div>
+                </div>
 
-            {/* Grid 8 Slot Foto Galeri */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-              {Array.from({ length: 8 }, (_, idx) => {
-                const slotId = `PORTO_${idx + 1}`;
-                const val = portoPhotos[idx] || '';
-                const captionVal = portoCaptions[idx] || '';
-                const isBgCover = idx === 0;
-                const isFeaturedTop = idx === 1;
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-slate-400 mb-1">Cabang / Lokasi 1</label>
+                    <input
+                      type="text"
+                      placeholder="Contoh: Cabang Pusat..."
+                      value={lokasi1}
+                      onChange={(e) => setLokasi1(e.target.value)}
+                      className="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-slate-400 mb-1">Cabang / Lokasi 2 (Opsional)</label>
+                    <input
+                      type="text"
+                      placeholder="Cabang 2..."
+                      value={lokasi2}
+                      onChange={(e) => setLokasi2(e.target.value)}
+                      className="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-slate-400 mb-1">Cabang / Lokasi 3 (Opsional)</label>
+                    <input
+                      type="text"
+                      placeholder="Cabang 3..."
+                      value={lokasi3}
+                      onChange={(e) => setLokasi3(e.target.value)}
+                      className="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-white"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
 
-                const updatePhotoAt = (newUrl: string) => {
-                  setPortoPhotos((prev) => {
-                    const copy = [...prev];
-                    copy[idx] = newUrl;
-                    return copy;
-                  });
-                };
+          {/* 4. UPLOAD FOTO & GALERI PORTOFOLIO (TERTUTUP DEFAULT) */}
+          <div className="rounded-xl bg-slate-950 border border-slate-800 overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setOpenSectionUpload(!openSectionUpload)}
+              className="w-full flex items-center justify-between p-3.5 text-left font-bold text-white text-xs hover:bg-slate-900/50 cursor-pointer"
+            >
+              <div className="flex items-center gap-2">
+                <span>📷</span>
+                <span>Upload Foto Profil / Logo &amp; Galeri Portofolio </span>
+              </div>
+              <span className="text-slate-400 text-xs px-2 py-0.5 rounded bg-slate-950 border border-slate-700">
+                {openSectionUpload ? '▲' : '▼'}
+              </span>
+            </button>
+            {openSectionUpload && (
+              <div className="p-4 pt-0 space-y-3 border-t border-slate-800/80">
+                <div className="space-y-3 pt-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <label className="block text-slate-200 font-bold text-xs">
+                        Foto Profil / Logo &amp; Galeri Portofolio
+                      </label>
+                      <p className="text-[11px] text-slate-400">
+                        <strong className="text-amber-300">Foto 1</strong> untuk latar belakang sampul utama. <strong className="text-sky-300">Foto 2 s/d 8</strong> tampil di galeri portofolio web.
+                      </p>
+                    </div>
+                  </div>
 
-                const updateCaptionAt = (newCap: string) => {
-                  setPortoCaptions((prev) => {
-                    const copy = [...prev];
-                    copy[idx] = newCap;
-                    return copy;
-                  });
-                };
-
-                return (
-                  <div
-                    key={slotId}
-                    className={`rounded-xl p-2.5 flex flex-col justify-between space-y-2 border ${
-                      isBgCover
-                        ? 'bg-amber-950/20 border-amber-500/60'
-                        : isFeaturedTop
-                        ? 'bg-sky-950/20 border-sky-500/50'
-                        : 'bg-slate-950 border-slate-800'
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-1">
+                  {/* Baris Upload Logo Brand Landing Page */}
+                  <div className="rounded-xl bg-slate-900 border border-slate-800 p-3 flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <img
+                        src={logoWeb || '/logo-kafela.svg'}
+                        alt="Logo Studio"
+                        className="w-14 h-14 rounded-full object-cover border-2 border-amber-500/70 bg-white shrink-0"
+                      />
                       <div>
-                        <span className="text-[11px] font-extrabold text-white block">
-                          {isBgCover
-                            ? '📌 Foto 1 (Sampul)'
-                            : isFeaturedTop
-                            ? '⭐ Foto 2 (Foto Utama)'
-                            : `🖼️ Foto ${idx + 1}`}
-                        </span>
-                        <span className="text-[10px] text-slate-400 block leading-tight">
-                          {isBgCover
-                            ? 'Latar Sampul Depan'
-                            : isFeaturedTop
-                            ? 'Foto Utama di Galeri'
-                            : 'Tampil di Grid Galeri'}
-                        </span>
+                        <p className="font-bold text-white text-xs">Foto Profil / Logo Brand di Aplikasi &amp; Website</p>
+                        <p className="text-[11px] text-slate-400">
+                          {uploadingSlot === 'LOGO'
+                            ? 'Memproses logo...'
+                            : logoWeb && logoWeb !== '/logo-kafela.svg'
+                            ? 'Logo kustom terpasang'
+                            : "Menggunakan Logo Resmi kafela's Agenda"}
+                        </p>
                       </div>
-                      {val && (
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <label className="px-3 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs cursor-pointer">
+                        <span>📷 Ganti Logo</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) =>
+                            handleSelectPhotoFromGallery('LOGO', e.target.files?.[0], 500, setLogoWeb)
+                          }
+                        />
+                      </label>
+                      {logoWeb && logoWeb !== '/logo-kafela.svg' && (
                         <button
                           type="button"
-                          onClick={() => {
-                            updatePhotoAt('');
-                            updateCaptionAt('');
-                          }}
-                          className="text-[10px] font-bold text-rose-400 hover:text-rose-300 cursor-pointer shrink-0"
+                          onClick={() => setLogoWeb('/logo-kafela.svg')}
+                          className="px-2.5 py-2 rounded-lg bg-amber-600/20 hover:bg-amber-600/35 text-amber-300 font-bold text-xs cursor-pointer"
                         >
-                          Hapus
+                          Reset ke Logo Kafela
                         </button>
                       )}
                     </div>
-
-                    {val ? (
-                      <div className="relative rounded-lg overflow-hidden h-28 bg-slate-900 border border-slate-800">
-                        <img
-                          src={val}
-                          alt={`Foto ${idx + 1}`}
-                          className="w-full h-full object-cover"
-                        />
-                        <span className="absolute bottom-1.5 left-1.5 px-1.5 py-0.5 rounded text-[9px] font-semibold shadow bg-emerald-600 text-white">
-                          ✓ Siap Simpan
-                        </span>
-                      </div>
-                    ) : (
-                      <label className="h-28 rounded-lg border-2 border-dashed border-slate-700 hover:border-purple-400 bg-slate-900/60 flex flex-col items-center justify-center text-center p-2 cursor-pointer transition-colors">
-                        <span className="text-lg">📷</span>
-                        <span className="text-[11px] font-bold text-purple-300 mt-1">
-                          {uploadingSlot === slotId ? 'Memproses...' : 'Pilih Foto'}
-                        </span>
-                        <input
-                          type="file"
-                          accept="image/*"
-                          className="hidden"
-                          onChange={(e) =>
-                            handleSelectPhotoFromGallery(
-                              slotId,
-                              e.target.files?.[0],
-                              1280,
-                              updatePhotoAt
-                            )
-                          }
-                        />
-                      </label>
-                    )}
-
-                    {/* Input Judul / Keterangan Foto */}
-                    {!isBgCover && (
-                      <input
-                        type="text"
-                        placeholder="Judul / Keterangan Foto"
-                        value={captionVal}
-                        onChange={(e) => updateCaptionAt(e.target.value)}
-                        className="w-full rounded-lg bg-slate-900 border border-slate-700 px-2.5 py-1.5 text-[11px] text-white placeholder:text-slate-500"
-                      />
-                    )}
-
-                    {isBgCover && (
-                      <div className="px-2 py-1 rounded bg-amber-500/10 border border-amber-500/30 text-[10px] text-amber-300 font-semibold text-center">
-                        Latar Sampul Depan
-                      </div>
-                    )}
-
-                    {val && (
-                      <label className="w-full py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-center text-[11px] font-bold text-slate-200 cursor-pointer block">
-                        <span>Ganti Foto</span>
-                        <input
-                          type="file"
-                          accept="image/*"
-                          className="hidden"
-                          onChange={(e) =>
-                            handleSelectPhotoFromGallery(
-                              slotId,
-                              e.target.files?.[0],
-                              1280,
-                              updatePhotoAt
-                            )
-                          }
-                        />
-                      </label>
-                    )}
                   </div>
-                );
-              })}
-            </div>
+
+                  {/* Grid 8 Slot Foto Galeri */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                    {Array.from({ length: 8 }, (_, idx) => {
+                      const slotId = `PORTO_${idx + 1}`;
+                      const val = portoPhotos[idx] || '';
+                      const captionVal = portoCaptions[idx] || '';
+                      const isBgCover = idx === 0;
+                      const isFeaturedTop = idx === 1;
+
+                      const updatePhotoAt = (newUrl: string) => {
+                        setPortoPhotos((prev) => {
+                          const copy = [...prev];
+                          copy[idx] = newUrl;
+                          return copy;
+                        });
+                      };
+
+                      const updateCaptionAt = (newCap: string) => {
+                        setPortoCaptions((prev) => {
+                          const copy = [...prev];
+                          copy[idx] = newCap;
+                          return copy;
+                        });
+                      };
+
+                      return (
+                        <div
+                          key={slotId}
+                          className={`rounded-xl p-2.5 flex flex-col justify-between space-y-2 border ${
+                            isBgCover
+                              ? 'bg-amber-950/20 border-amber-500/60'
+                              : isFeaturedTop
+                              ? 'bg-sky-950/20 border-sky-500/50'
+                              : 'bg-slate-900 border-slate-800'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-1">
+                            <div>
+                              <span className="text-[11px] font-extrabold text-white block">
+                                {isBgCover
+                                  ? '📌 Foto 1 (Sampul)'
+                                  : isFeaturedTop
+                                  ? '⭐ Foto 2 (Foto Utama)'
+                                  : `🖼️ Foto ${idx + 1}`}
+                              </span>
+                              <span className="text-[10px] text-slate-400 block leading-tight">
+                                {isBgCover
+                                  ? 'Latar Sampul Depan'
+                                  : isFeaturedTop
+                                  ? 'Foto Utama di Galeri'
+                                  : 'Tampil di Grid Galeri'}
+                              </span>
+                            </div>
+                            {val && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  updatePhotoAt('');
+                                  updateCaptionAt('');
+                                }}
+                                className="text-[10px] font-bold text-rose-400 hover:text-rose-300 cursor-pointer shrink-0"
+                              >
+                                Hapus
+                              </button>
+                            )}
+                          </div>
+
+                          {val ? (
+                            <div className="relative rounded-lg overflow-hidden h-28 bg-slate-950 border border-slate-800">
+                              <img
+                                src={val}
+                                alt={`Foto ${idx + 1}`}
+                                className="w-full h-full object-cover"
+                              />
+                              <span className="absolute bottom-1.5 left-1.5 px-1.5 py-0.5 rounded text-[9px] font-semibold shadow bg-emerald-600 text-white">
+                                ✓ Siap Simpan
+                              </span>
+                            </div>
+                          ) : (
+                            <label className="h-28 rounded-lg border-2 border-dashed border-slate-700 hover:border-purple-400 bg-slate-950 flex flex-col items-center justify-center text-center p-2 cursor-pointer transition-colors">
+                              <span className="text-lg">📷</span>
+                              <span className="text-[11px] font-bold text-purple-300 mt-1">
+                                {uploadingSlot === slotId ? 'Memproses...' : 'Pilih Foto'}
+                              </span>
+                              <input
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                onChange={(e) =>
+                                  handleSelectPhotoFromGallery(
+                                    slotId,
+                                    e.target.files?.[0],
+                                    1280,
+                                    updatePhotoAt
+                                  )
+                                }
+                              />
+                            </label>
+                          )}
+
+                          {/* Input Judul / Keterangan Foto */}
+                          {!isBgCover && (
+                            <input
+                              type="text"
+                              placeholder="Judul / Keterangan Foto"
+                              value={captionVal}
+                              onChange={(e) => updateCaptionAt(e.target.value)}
+                              className="w-full rounded-lg bg-slate-950 border border-slate-800 px-2.5 py-1.5 text-[11px] text-white placeholder:text-slate-500"
+                            />
+                          )}
+
+                          {isBgCover && (
+                            <div className="px-2 py-1 rounded bg-amber-500/10 border border-amber-500/30 text-[10px] text-amber-300 font-semibold text-center">
+                              Latar Sampul Depan
+                            </div>
+                          )}
+
+                          {val && (
+                            <label className="w-full py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-center text-[11px] font-bold text-slate-200 cursor-pointer block">
+                              <span>Ganti Foto</span>
+                              <input
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                onChange={(e) =>
+                                  handleSelectPhotoFromGallery(
+                                    slotId,
+                                    e.target.files?.[0],
+                                    1280,
+                                    updatePhotoAt
+                                  )
+                                }
+                              />
+                            </label>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* 4. WEBSITE PROFIL KE-2 (SUB-BRAND / SPESIALISASI) [Add-On Pro+ Rp 10.000 / bln] */}
-          <div className="rounded-xl bg-slate-950 border border-slate-800 p-4 space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-3">
+          {/* 4. WEBSITE PROFIL KE-2 (TERTUTUP DEFAULT) */}
+          <div className="rounded-xl bg-slate-950 border border-slate-800 overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setOpenSectionWeb2(!openSectionWeb2)}
+              className="w-full flex items-center justify-between p-3.5 text-left font-bold text-white text-xs hover:bg-slate-900/50 cursor-pointer"
+            >
+              <div className="flex items-center gap-2">
+                <span>✨</span>
+                <span>Website Profil Ke-2 (Sub-Brand / Spesialisasi Niche)</span>
+              </div>
+              <span className="text-slate-400 text-xs px-2 py-0.5 rounded bg-slate-950 border border-slate-700">
+                {openSectionWeb2 ? '▲' : '▼'}
+              </span>
+            </button>
+            {openSectionWeb2 && (
+              <div className="p-4 pt-0 space-y-4 border-t border-slate-800/80">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-3 pt-3">
               <div className="flex items-center gap-2">
                 <span className="text-base">✨</span>
                 <div>
@@ -2712,6 +2826,8 @@ export const PengaturanStudioView: React.FC<{
                 </button>
               </div>
             )}
+              </div>
+            )}
           </div>
 
           <button
@@ -2773,6 +2889,8 @@ export const PengaturanStudioView: React.FC<{
                   ctaTeksKustom,
                   ctaLinkKustom,
                   teksTombolBooking,
+                  isWebsiteActive,
+                  isBookingActive,
                   webProfil2: {
                     aktif: web2Aktif,
                     subJudul: web2SubJudul.trim(),
@@ -2796,7 +2914,7 @@ export const PengaturanStudioView: React.FC<{
             <span>
               {isSavingToast
                 ? 'Menyimpan ke Server...'
-                : 'Simpan Identitas Website, Layout, Penutup & 8 Foto Galeri'}
+                : 'Simpan Identitas Website'}
             </span>
           </button>
         </div>

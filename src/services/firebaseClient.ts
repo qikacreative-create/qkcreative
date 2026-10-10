@@ -87,8 +87,8 @@ export function initKafelaFirebase(customCfg?: FirebaseCustomConfig): {
   if (!cfg || !cfg.apiKey || !cfg.projectId) return null;
 
   try {
-    const existing = getApps().find((a) => a.name === 'KafelaAgendaPC');
-    cachedApp = existing || initializeApp(cfg, 'KafelaAgendaPC');
+    const existing = getApps().find((a) => a.name === 'Kafelas AgendaPC');
+    cachedApp = existing || initializeApp(cfg, 'Kafelas AgendaPC');
     cachedAuth = getAuth(cachedApp);
     cachedDb = getFirestore(cachedApp);
     return { app: cachedApp, auth: cachedAuth, db: cachedDb };
